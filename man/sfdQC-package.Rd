@@ -9,9 +9,6 @@
 Functions to support the quallity control of fishery
 VMS (vessel monitoring system) data.
 }
-\details{
-
-}
 \references{
 ICES Working Group on Spatial Fisheries Data: \url{http://www.ices.dk/community/groups/Pages/WGSFD.aspx}.
 }

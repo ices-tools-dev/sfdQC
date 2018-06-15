@@ -1,0 +1,5 @@
+{
+  // database connection string
+  "db_connection": "Driver={SQL Server};Server=SQL06;Database=VMS;Trusted_Connection=yes"
+}
+
