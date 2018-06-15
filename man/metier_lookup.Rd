@@ -19,7 +19,7 @@
 ICES. 2016. Report of the working group on spatial fisheries data (WGSFD).
 }
 \usage{
-catage.xtab
+metier_lookup
 }
 \description{
 A table.

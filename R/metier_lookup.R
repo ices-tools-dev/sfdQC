@@ -8,7 +8,7 @@
 #' A table.
 #'
 #' @usage
-#' catage.xtab
+#' metier_lookup
 #'
 #' @format
 #' Data frame with containing eight columns:
