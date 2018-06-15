@@ -1,0 +1,20 @@
+#' @docType package
+#'
+#' @name sfdQC-package
+#'
+#' @aliases sfdQC
+#'
+#' @title Functions to support the quallity control of fishery VMS (vessel monitoring system) data.
+#'
+#' @description
+#' Functions to support the quallity control of fishery
+#' VMS (vessel monitoring system) data.
+#'
+#' @details
+#'
+#' @author Colin Millar, Einar Hjorleifsson, Niels Hintzen and Josefine Egekvist.
+#'
+#' @references
+#' ICES Working Group on Spatial Fisheries Data: \url{http://www.ices.dk/community/groups/Pages/WGSFD.aspx}.
+
+NA

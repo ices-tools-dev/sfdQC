@@ -1,0 +1,16 @@
+Package: sfdQC
+Version: 1.0-0
+Date: 2018-06-15
+Title: Functions to produce quality control reports and plots for ICES WGSFD VMS data and products
+Authors@R: c(person("Colin", "Millar", role=c("aut","cre"), email="colin.millar@ices.dk"),
+             person("Einar", "Hjorleifsson", role="aut"),
+             person("Niels", "Hintzen", role="ctb"),
+             person("Josefine", "Egekvist", role="ctb"))
+Imports: grDevices, tools, utils, knitr
+Suggests: icesAdvice
+LazyData: yes
+Description: Functions to support the quallity control of fishery 
+             VMS (vessel monitoring system) data.
+License: GPL (>= 2)
+URL: http://www.ices.dk/community/groups/Pages/WGSFD.aspx
+RoxygenNote: 6.0.1
