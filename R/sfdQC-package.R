@@ -10,8 +10,6 @@
 #' Functions to support the quallity control of fishery
 #' VMS (vessel monitoring system) data.
 #'
-#' @details
-#'
 #' @author Colin Millar, Einar Hjorleifsson, Niels Hintzen and Josefine Egekvist.
 #'
 #' @references
