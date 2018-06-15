@@ -11,15 +11,18 @@ sfdQC provides functions to support the quallity control of fishery
 VMS (vessel monitoring system) data.
 
 sfdQC is implemented as an [R](https://www.r-project.org) package and
-available on [CRAN](https://cran.r-project.org/package=sfdQC).
+available on [GitHub](https://github.com/ices-tools-dev/sfdQC).
 
 Installation
 ------------
 
-sfdQC can be installed from CRAN using the `install.packages` command:
+sfdQC can be installed from GitHub using the devtools package `install_github` command:
+
+The current development version can be installed using:
 
 ```R
-install.packages("sfdQC")
+library(devtools)
+install_github("ices-tools-dev/sfdQC")
 ```
 
 Usage
@@ -51,9 +54,4 @@ Feel free to open an
 [issue](https://github.com/ices-tools-dev/sfdQC/issues) there if you
 encounter problems or have suggestions for future versions.
 
-The current development version can be installed using:
 
-```R
-library(devtools)
-install_github("ices-tools-dev/sfdQC")
-```
