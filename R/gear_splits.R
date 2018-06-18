@@ -1,5 +1,5 @@
 #' @export
-gear_splits <- function(response, data = ICES_VE, ylab_text, func = sum, year_groups = 1, gear_groups = 1) {
+gear_splits <- function(response, data, ylab_text, func = sum, year_groups = 1, gear_groups = 1) {
   dat2tab <-
     with(data,
          tapply(response, list(gear_code = gear_code, year = year), func, na.rm = TRUE))
