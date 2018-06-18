@@ -3,3 +3,5 @@ README.md
 ^.*\.Rproj$
 ^\.Rproj\.user$
 ^data-raw$
+^sfdQC.sublime-project$
+^sfdQC.sublime-workspace$
