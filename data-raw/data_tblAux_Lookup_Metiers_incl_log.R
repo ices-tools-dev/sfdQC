@@ -1,29 +1,32 @@
 
 # packages
-library(RODBC)
+library(DBI)
+library(odbc)
 library(icesTAF)
 library(jsonlite)
+library(dplyr)
 
 # settings
 config <- read_json("data-raw//config.json", simplifyVector = TRUE)
 
 # connect to DB
-conn <- odbcDriverConnect(connection = config$db_connection)
+conn <- dbConnect(odbc::odbc(),
+                 driver = config$odbc$driver,
+                 server = config$odbc$server,
+                 Trusted_Connection = config$odbc$Trusted_Connection,
+                 database = config$odbc$database)
 
-# set up sql command
-sqlq <-
-"select LE_MET_level6,
-        Benthis_metiers,
-        Metier_level5,
-        Metier_level4,
-        JNCC_grouping,
-        Fishing_category,
-        Description,
-        Fishing_category_FO
-from tblAux_Lookup_Metiers_incl_log"
-
-# fetch
-metier_lookup <- sqlQuery(conn, sqlq)
+metier_lookup <-
+  dplyr::tbl(conn, "tblAux_Lookup_Metiers_incl_log") %>%
+  dplyr::select(LE_MET_level6,
+                Benthis_metiers,
+                Metier_level5,
+                Metier_level4,
+                JNCC_grouping,
+                Fishing_category,
+                Description,
+                Fishing_category_FO) %>%
+  collect(n = Inf)
 
 # disconnect
 odbcClose(conn)

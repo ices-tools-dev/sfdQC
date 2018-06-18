@@ -37,7 +37,7 @@ A table.
 Copmletely made up VMS data to allow QC functions to be demonstrated.
 }
 \examples{
-head(vms)
+## head(vms)
 }
 \seealso{
 \code{\link{sfdQC-package}} gives an overview of the package.

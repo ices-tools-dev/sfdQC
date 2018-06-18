@@ -11,7 +11,7 @@
 #' vms
 #'
 #' @format
-#'                   
+#'
 #' Data frame with containing 17 columns:
 #' \tabular{ll}{
 #'   \code{recordtype} \tab Metier level 6 gear code\cr
@@ -44,6 +44,6 @@
 #'
 #'
 #' @examples
-#' head(vms)
+#' ## head(vms)
 
 NA

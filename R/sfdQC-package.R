@@ -14,5 +14,10 @@
 #'
 #' @references
 #' ICES Working Group on Spatial Fisheries Data: \url{http://www.ices.dk/community/groups/Pages/WGSFD.aspx}.
+#'
+#' @import knitr
+#' @import ggplot2
+#' @import dplyr
 
 NA
+

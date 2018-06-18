@@ -1,6 +1,9 @@
 --------------------------------------------------------------------------------
 sfdQC 1.0-0 (2018-06-18)
 --------------------------------------------------------------------------------
-o Initial release, with 
-o 0 functions 
-o 2 dataset: metier_lookup, benthis
+o Initial release, with
+o 10 functions: data_coverage, gear_splits, make_polVMS, spatialplot,
+                theme_icesqc, CSquare2LonLat (from vmstools package),
+                check_csquares, records_by_month, records_by_year,
+                spatial_extent
+o 2 datasets: metier_lookup, benthis

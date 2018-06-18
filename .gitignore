@@ -5,3 +5,5 @@
 *.Rproj
 data/vms.rda
 data-raw/data_testDataSet.R
+*.sublime-workspace
+*.sublime-project
