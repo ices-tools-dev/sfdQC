@@ -1,0 +1,217 @@
+---
+title: "ICES VMS datacall quality check report for `r params$country`"
+header-includes:
+- \usepackage{comment}
+- \usepackage{booktabs}
+- \usepackage{longtable}
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    df_print: paged
+params:
+  LE_filename: data/LE.csv
+  VE_filename: data/VE.csv
+  country: Gdogo
+---
+
+<!-- QCTEMPLATE: header -->
+```{r setup, eval=TRUE, echo=FALSE, cache=FALSE}
+knitr::opts_chunk$set(comment   = NA,
+               warning   = FALSE,
+               message   = FALSE,
+               error     = FALSE,
+               echo      = FALSE,
+               eval      = TRUE,
+               dev = "my_png",
+               fig.ext = "png",
+               fig.align = 'left',
+               tab.align = 'left')
+```
+
+```{r}
+options(knitr.kable.NA = '-')
+options(knitr.table.format = 'latex')
+options(digits = 4)
+
+my_png <- function(file, width, height) {
+  png(file, width = width, height = height, 
+      res = 800, units = "in", pointsize = 20)
+}
+
+library(tidyverse)
+```
+
+```{r helpers}
+CSquare2LonLat2 <- function(x, degrees) {
+  vmstools::CSquare2LonLat(x, degrees = degrees) %>% 
+    as_tibble() %>% 
+    unite("zchords", c("SI_LONG", "SI_LATI"), sep = ":") %>% 
+    pull(zchords)
+}
+ICESrectangle2LonLat2 <- function(x, midpoint) {
+  vmstools::ICESrectangle2LonLat(x, midpoint = midpoint) %>% 
+    as_tibble() %>% 
+    unite("zchords", c("SI_LONG", "SI_LATI"), sep = ":") %>% 
+    pull(zchords)
+}
+```
+
+
+```{r load-data}
+#load(params$eurPols)
+#polLand <- fortify(eurPols)
+```
+<!------------------------------------------------------------------------------
+Data handling
+---------------------------------------------------------------------------- -->
+```{r data}
+#Read in latest submission -->",
+ICES_LE <- read_csv(params$LE_filename)
+ICES_VE <- read_csv(params$VE_filename)
+```
+<!------------------------------------------------------------------------------
+Pre-calculations
+---------------------------------------------------------------------------- -->
+
+
+<!--------------------------
+Checks for VMS data
+------------------------ -->
+```{r vms-checks}
+#Most recent submission -->
+country <- ICES_VE$country[1]
+
+ICES_VE <- 
+  ICES_VE %>% 
+  mutate(zchords = CSquare2LonLat2(c_square, degrees = 0.05)) %>% 
+  separate(zchords, c("long", "lat"), sep = ":", convert = TRUE)
+
+spatBound <- list(xrange = range(ICES_VE$long, na.rm=TRUE),
+                  yrange = range(ICES_VE$lat, na.rm=TRUE))
+spatCore  <- list(xrange = quantile(ICES_VE$long, c(0.025, 0.975)),
+                  yrange = quantile(ICES_VE$lat, c(0.025, 0.975)))
+tempBound <- range(ICES_VE$year, na.rm=TRUE)
+```
+<!--------------------------
+Checks for logbook data
+------------------------ -->
+```{r logbook-checks}
+#Most recent submission -->
+ICES_LE <- 
+  ICES_LE %>% 
+  mutate(zchords = ICESrectangle2LonLat2(ICES_rectangle, midpoint=TRUE)) %>% 
+  separate(zchords, c("long", "lat"), sep = ":", convert = TRUE)
+spatBoundLog <- list(xrange = range(ICES_LE$long, na.rm=TRUE),
+                     yrange = range(ICES_LE$lat, na.rm=TRUE))
+tempBoundLog <- range(ICES_LE$year, na.rm=TRUE)
+```
+
+
+<!--------------------------
+Utility stuff
+------------------------ -->
+```{r utilities, eval = FALSE}
+
+# ggplot settings
+theme_icesqc <- function(legend.position = "none")
+  theme(axis.text.y   = element_text(colour="black"),
+        axis.text.x   = element_text(colour="black"),
+        axis.title.y  = element_text(size=14,face="bold"),
+        axis.title.x  = element_text(size=14,face="bold"),
+        legend.position = legend.position,
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"),
+        panel.border = element_rect(colour = "black", fill=NA))
+
+
+# utility functions
+make_polVMS <- function(coordGrd, resolution = 0.05) {
+  polVMS <- data.frame(long = rep(c(-1, -1, 1,  1, -1), nrow(coordGrd)) * resolution/2,
+                       lat  = rep(c(-1,  1, 1, -1, -1), nrow(coordGrd)) * resolution/2)
+  polVMS$long <- polVMS$long + rep(coordGrd$SI_LONG, each = 5)
+  polVMS$lat <- polVMS$lat + rep(coordGrd$SI_LATI, each = 5)
+  polVMS$order <- rep(1:5, nrow(coordGrd))
+  polVMS$hole <- FALSE
+  polVMS$piece <- 1
+  polVMS$id <- rep(1:nrow(coordGrd), each = 5)
+  polVMS$group <- paste0(polVMS$id, ".", polVMS$piece)
+
+  polVMS
+}
+
+
+# default-spatial-ggplot
+spatialplot <- function(data, xyrange = spatCore) {
+  ggplot(polLand, aes(long, lat)) +
+    geom_polygon(aes(group=group), fill = "light grey") +
+    coord_quickmap(xlim = xyrange$xrange,
+                   ylim = xyrange$yrange) +
+    labs(x = "Longitude", y = "Latitude") +
+    geom_polygon(data = data,
+                 aes(long, lat, group = group, fill = cols)) +
+    geom_polygon(data = polLand,
+                 aes(long, lat, group = group),
+                 colour = "black", size = 0.25, fill = "transparent")
+}
+
+# area submitted plot
+data_coverage <- function(coordGrd, spatBound, res) {
+
+  # create a fortied polygon of csquares
+  polVMS <- make_polVMS(coordGrd, resolution = res)
+  polVMS$year <- rep(coordGrd$year, each = 5)
+  polVMS$cols <- "red"
+
+  spatialplot(polVMS, spatBound) +
+    facet_wrap(~ year, ncol = 2) +
+    theme_icesqc()
+}
+
+
+gear_splits <- function(response, data = ICES_VE, ylab_text, func = sum, year_groups = 1, gear_groups = 1) {
+  dat2tab <-
+    with(data,
+         tapply(response, list(gear_code = gear_code, year = year), func, na.rm = TRUE))
+
+  # split by year?
+  out <- ""
+  if (year_groups == 1) {
+    out <- c(out, kable(dat2tab, booktabs = TRUE))
+  } else {
+    grp <- cut(as.numeric(colnames(dat2tab)), year_groups)
+    for (igrp in levels(grp)) {
+      out <- c(out, kable(dat2tab[, grp == igrp], booktabs = TRUE), "/n")
+    }
+  }
+
+  dat2plot <- as.data.frame.table(dat2tab, responseName = "response")
+  dat2plot <- dat2plot[complete.cases(dat2plot),]
+  max <- tapply(dat2plot$response, dat2plot$gear_code, max, na.rm = TRUE)
+  if (gear_groups == 1 || length(unique(max)) == 1) {
+    grp <- rep(1, length(max))
+  } else {
+    max[!is.finite(max)] <- min(max, na.rm = TRUE)
+    grp <- as.numeric(cut(sqrt(max), gear_groups))
+  }
+
+  p <-
+    lapply(sort(unique(grp), decreasing = TRUE), function(i) {
+      dat <- dat2plot[dat2plot$gear_code %in% names(max)[grp == i],]
+
+      ggplot(dat, aes(x = year, y = response)) +
+      geom_line(aes(group = gear_code, colour = gear_code), lwd=1.5) +
+      xlab("Year") + ylab(ylab_text) +
+      theme_icesqc(legend.position = "right")
+    })
+
+  list(table = structure(paste(out, collapse = "\n"), format = "latex", class = "knitr_kable"),
+       plots = p)
+}
+```
+
+
+<!------------------------------------------------------------------------------
+Tables & Figures VMS
+---------------------------------------------------------------------------- -->
