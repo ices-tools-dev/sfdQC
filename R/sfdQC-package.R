@@ -17,7 +17,8 @@
 #'
 #' @import knitr
 #' @import ggplot2
-#' @import dplyr
+#' @importFrom dplyr %>%
+#' @importFrom stats aggregate complete.cases
 
 NA
 
