@@ -22,7 +22,7 @@ benthis <-
   collect(n = Inf)
 
 # disconnect
-odbcClose(conn)
+dbDisconnect(conn)
 
 # add to data folder
 devtools::use_data(benthis, overwrite = TRUE)
