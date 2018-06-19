@@ -46,29 +46,65 @@ library(vmstools)
 library(RColorBrewer)
 library(doBy)
 library(reshape2)
+
+library(maps)
 ```
 
 ```{r load-data}
 load(params$eurPols)
 polLand <- fortify(eurPols)
 ```
+
+
+```{r}
+# helper functions
+
+# Functions made pipe-able
+CSquare2LonLat2 <- function(d, degrees) {
+  
+  dplyr::bind_cols(d,
+                   vmstools::CSquare2LonLat(d$c_square, degrees = degrees)) %>% 
+    #dplyr::rename(lon = SI_LONG, lat = SI_LATI) %>% 
+    tibble::as_tibble()
+  
+}
+ICESrectangle2LonLat2 <- function(d, midpoint) {
+  
+  dplyr::bind_cols(d,
+                   vmstools::ICESrectangle2LonLat(d$ICES_rectangle, midpoint = midpoint)) %>% 
+    #dplyr::rename(lon = SI_LONG, lat = SI_LATI) %>% 
+    tibble::as_tibble()
+    
+}
+
+q25 <- function(x) quantile(x, 0.25)
+q75 <- function(x) quantile(x, 0.75)
+
+grade <- function(x, dx) {
+  brks <- seq(floor(min(x)), ceiling(max(x)),dx)
+  ints <- findInterval(x, brks, all.inside = TRUE)
+  x <- (brks[ints] + brks[ints + 1]) / 2
+  return(x)
+}
+```
+
+
 <!------------------------------------------------------------------------------
 Data handling
 ---------------------------------------------------------------------------- -->
 ```{r data}
 #Read in latest submission -->",
-ICES_LE <- read.table(params$LE_filename, sep = ',', header = TRUE,
-          stringsAsFactors = FALSE, na.strings = 'NULL',
-          colClasses = c('character', 'character', 'numeric', 'numeric',
-                         'character', 'character', 'character', 'numeric',
-                         'character', 'character',
-                         'numeric', 'numeric', 'numeric'))
-ICES_VE <- read.table(params$VE_filename, sep = ',', header = TRUE,
-          stringsAsFactors = FALSE, na.strings = 'NULL',
-          colClasses = c('character', 'character', 'numeric', 'numeric',
-                         'character', 'character', 'character', 'character',
-                         'numeric', 'numeric', 'numeric', 'numeric',
-                         'numeric', 'numeric', 'numeric', 'numeric'))
+ICES_LE <- 
+  readr::read_csv(params$LE_filename,
+                  col_types = c('ccnncccnccnnn')) %>% 
+  ICESrectangle2LonLat2(midpoint = TRUE)
+
+ICES_VE <- 
+  readr::read_csv(params$VE_filename,
+                  # Note: last column here is "avg_gearWidth"
+                  #       This was not specified in the first
+                  col_types = c('ccnnccccnnnnnnnnn')) %>% 
+  CSquare2LonLat2(degrees = 0.05)
 ```
 <!------------------------------------------------------------------------------
 Pre-calculations
@@ -81,7 +117,6 @@ Checks for VMS data
 ```{r vms-checks}
 #Most recent submission -->
 country <- ICES_VE$country[1]
-ICES_VE <- cbind(ICES_VE, CSquare2LonLat(ICES_VE$c_square, degrees=0.05))
 spatBound <- list(xrange = range(ICES_VE$SI_LONG, na.rm=TRUE),
                   yrange = range(ICES_VE$SI_LATI, na.rm=TRUE))
 spatCore  <- list(xrange = quantile(ICES_VE$SI_LONG, c(0.025, 0.975)),
@@ -93,12 +128,28 @@ Checks for logbook data
 ------------------------ -->
 ```{r logbook-checks}
 #Most recent submission -->
-ICES_LE <- cbind(ICES_LE, ICESrectangle2LonLat(ICES_LE$ICES_rectangle, midpoint=TRUE))
 spatBoundLog <- list(xrange = range(ICES_LE$SI_LONG, na.rm=TRUE),
                      yrange = range(ICES_LE$SI_LATI, na.rm=TRUE))
 tempBoundLog <- range(ICES_LE$year, na.rm=TRUE)
 ```
 
+<!--------------------------
+Map background
+------------------------ -->
+```{r}
+m.range <- 
+  map_data("world", 
+           xlim = spatBound$xrange,
+           ylim = spatBound$xrange)
+m.core <- 
+  map_data("world",
+           xlim = spatCore$xrange, 
+           ylim = spatCore$yrange)
+m.log <- 
+  map_data("world",
+           xlim = spatBoundLog$xrange, 
+           ylim = spatBoundLog$yrange)
+```
 
 <!--------------------------
 Utility stuff
@@ -127,14 +178,18 @@ opts_chunk$set(eval = hasvms)
 
 ## Years & number of records for which data has been submitted:
 ```{r records-by-year, results='asis'}
-kable(plyr::count(ICES_VE, 'year'), booktabs = TRUE)
+d <- 
+  ICES_VE %>% 
+  dplyr::group_by(year) %>% 
+  dplyr::count()
 
-dat2plot <- data.frame(table(ICES_VE$year))
-colnames(dat2plot) <- c("Year","Freq")
+d %>% kable(booktabs = TRUE)
 
-ggplot(dat2plot,aes(x=Year,y=Freq)) +
-  geom_bar(stat="identity") + xlab("Year") + ylab("Number of records") +
-  theme_icesqc()
+d %>% 
+  ggplot(aes(x = year, y = n)) +
+  theme_icesqc() +
+  geom_col() +
+  labs(x = "Year", y = "Number of records")
 ```
 
 `r if (any(is.na(ICES_VE$SI_LONG))) {"\\newpage"}`
@@ -157,108 +212,144 @@ if (any(is.na(ICES_VE$SI_LONG))) {
 
 ## Distribution of pings by month:
 ```{r pings-by-month}
-kable(table(ICES_VE$month, ICES_VE$year), booktabs = TRUE)
+d <- 
+  ICES_VE %>% 
+  dplyr::group_by(year, month) %>% 
+  dplyr::count()
 
-qplot(factor(year),data=ICES_VE, geom="bar",fill=factor(month)) +
-  xlab("Years") + ylab ("Count") + scale_fill_grey(guide=guide_legend(title="Month")) +
-  theme_icesqc()
+d %>% 
+  tidyr::spread(month, n) %>%
+  kable(booktabs = TRUE)
+
+d %>% 
+  ggplot(aes(x = year, y = n, fill = factor(month))) +
+  theme_icesqc() +
+  geom_col() +
+  scale_fill_grey(guide=guide_legend(title="Month")) +
+  labs(x = "Year", y = "Number of records")
 ```
 
 \newpage
 
 ## Spatial extent of data submitted by year:
 ```{r table-exent}
-dat2tab <- as.matrix(aggregate(ICES_VE$SI_LONG,by=list(ICES_VE$year),FUN=range))
-dat2tab <- cbind(dat2tab,as.matrix(aggregate(ICES_VE$SI_LATI,by=list(ICES_VE$year),FUN=range)[,-1]))
-colnames(dat2tab) <- c("Year", "min lon", "max lon", "min lat", "max lat")
-kable(dat2tab, booktabs = TRUE)
+ICES_VE %>% 
+  dplyr::select(year, long = SI_LONG, lat = SI_LATI) %>% 
+  dplyr::group_by(year) %>% 
+  dplyr::summarise_all(dplyr::funs(min, max)) %>% 
+  dplyr::select(year, dplyr::starts_with("long_"), dplyr::starts_with("lat_")) %>% 
+  kable(booktabs = TRUE)
 ```
 
 ## Area for which data has been submitted:
 ```{r area-of-data,  fig.height = 9}
-coordGrd <- unique(ICES_VE[, c("SI_LONG", "SI_LATI", "year")])
-data_coverage(coordGrd, spatBound, res = 0.5)
+ICES_VE %>% 
+  dplyr::select(year, long = SI_LONG, lat = SI_LATI) %>% 
+  dplyr::mutate(long = grade(long, 0.5),
+                lat = grade(lat, 0.5)) %>% 
+  dplyr::distinct() %>% 
+  ggplot(aes(long, lat)) +
+  theme_void() +
+  geom_polygon(data = m.range, aes(group = group), fill = "grey") +
+  geom_raster(fill = "red") +
+  coord_quickmap(xlim = spatBound$xrange, ylim = spatBound$yrange) +
+  facet_wrap(~ year, ncol = 2) +
+  labs(x = NULL, y = NULL)
 ```
 
 ```{r area-of-data2,  fig.height = 9}
-data_coverage(coordGrd, spatCore, res = 0.05)
+ICES_VE %>% 
+  dplyr::select(year, long = SI_LONG, lat = SI_LATI) %>% 
+  dplyr::distinct() %>% 
+  ggplot(aes(long, lat)) +
+  theme_void() +
+  geom_polygon(data = m.core, aes(group = group), fill = "grey") +
+  geom_raster(fill = "red") +
+  coord_quickmap(xlim = spatCore$xrange, ylim = spatCore$yrange) +
+  facet_wrap(~ year, ncol = 2) +
+  labs(x = NULL, y = NULL)
 ```
 
 \newpage
 
 ## Frequency of vessel length categories by year:
 ```{r records-by-vessel-length}
-kable(table(ICES_VE$vessel_length_category,ICES_VE$year), booktabs = TRUE)
+d <- 
+  ICES_VE %>% 
+  dplyr::group_by(year, variable = vessel_length_category) %>% 
+  dplyr::count()
+d %>% 
+  tidyr::spread(year, n) %>% 
+  kable(booktabs = TRUE)
 
-qplot(factor(year), data = ICES_VE, geom = "bar", fill = factor(vessel_length_category)) +
-  xlab("Years") + ylab ("Count") + 
-  scale_fill_grey(guide = guide_legend(title = "Length category")) +
-  theme_icesqc(legend.position = "right")
+d %>% 
+  ggplot(aes(year, n, fill = variable)) +
+  theme_icesqc(legend.position = "right") +
+  geom_col() +
+  scale_fill_grey() +
+  labs(x = "Year", y = "Number of records", fill = "Length category")
 ```
 
 \newpage
 
 ## Frequency of gear codes by year:
 ```{r records-by-gear-code, results='asis'}
-kable(table(ICES_VE$gear_code,ICES_VE$year), booktabs = TRUE)
+d <- 
+  ICES_VE %>% 
+  dplyr::group_by(year, variable = gear_code) %>% 
+  dplyr::count()
+d %>% 
+  tidyr::spread(year, n) %>% 
+  kable(booktabs = TRUE)
 
-qplot(factor(year), data = ICES_VE, geom = "bar", fill = factor(gear_code)) +
-  xlab("Years") + ylab ("Count") + 
-  scale_fill_grey(guide = guide_legend(title = "Gear code")) +
-  theme_icesqc(legend.position = "right")
+d %>% 
+  ggplot(aes(year, n, fill = variable)) +
+  theme_icesqc(legend.position = "right") +
+  geom_col() +
+  scale_fill_grey() +
+  labs(x = "Year", y = "Number of records", fill = "Gear code")
 ```
 
 \newpage
 
 ## Spatial extend of 3 most dominant gears:
 ```{r spatial-extent-dominant-gears, fig.height = 9}
-# get 3 main gears
-gear_table <- with(ICES_VE, aggregate(fishing_hours, list(gear_code = gear_code), sum, na.rm = TRUE))
-gear_table <- gear_table[order(gear_table$x, decreasing = TRUE),]
-top3gears <- gear_table$gear_code[1:pmin(3, nrow(gear_table))]
-
-# split by gear
-idx <- which(ICES_VE$gear_code %in% top3gears)
-coordGrd <- unique(ICES_VE[idx, c("SI_LONG", "SI_LATI", "year", "c_square", "gear_code")])
-
-# create a fortied polygon of csquares : 0.39 secs
-polVMS <- make_polVMS(coordGrd)
-polVMS$year <- rep(coordGrd$year, each = 5)
-polVMS$c_square <- rep(coordGrd$c_square,each=5)
-polVMS$gear_code<- rep(coordGrd$gear_code,each=5)
-
-# aggregate fishing days
-dat <- with(ICES_VE[idx,],
-            aggregate(fishing_hours/24,
-                 by = list(year = year, c_square = c_square, gear_code = gear_code),
-                 FUN = sum, na.rm = TRUE))
-dat <- dplyr::rename(dat, fishing_days = x)
+topgear <- 
+  ICES_VE %>% 
+  dplyr::group_by(gear_code) %>% 
+  dplyr::count() %>% 
+  dplyr::arrange(desc(n)) %>% 
+  dplyr::slice(1:3) %>%
+  dplyr::pull(gear_code)
+d <-
+  ICES_VE %>% 
+  dplyr::filter(gear_code %in% topgear) %>% 
+  dplyr::group_by(year, long = SI_LONG, lat = SI_LATI, gear_code) %>% 
+  dplyr::summarise(fishing_days = sum(fishing_hours, na.rm = TRUE)/24)
 
 # legend calculations
-steps <- ceiling(max(dat$fishing_days, na.rm = TRUE)/250)
+steps <- ceiling(max(d$fishing_days, na.rm = TRUE)/250)
 breaks <- unique(c(-1, 0, steps * c(1, 2.5, 5, 10, 25, 50, 100, 250)))
 legval <- paste(breaks[-length(breaks)], "<=", breaks[-1L])
 legval[1] <- "0"
 
 palette <- c("white", RColorBrewer::brewer.pal(length(breaks)-2, "YlOrRd"))  
-dat$colgrp <- as.numeric(cut(dat$fishing_days, breaks = breaks))
-dat$cols <- palette[dat$colgrp]
+d$colgrp <- as.numeric(cut(d$fishing_days, breaks = breaks))
+d$cols <- palette[d$colgrp]
 
-# join dat onto polVMS (much faster than left_join or merge)
-# make joining keys
-a_by <- apply(dat[c("year","c_square","gear_code")], 1, paste, collapse = ".")
-b_by <- apply(polVMS[c("year","c_square","gear_code")], 1, paste, collapse = ".")
-ib_by <- as.integer(factor(b_by, levels = a_by))
-polVMS$cols <- dat$cols[ib_by]
-
-# do plots
-for (gear in top3gears) {
+for(i in 1:length(topgear)) {
   p <-
-    spatialplot(polVMS[polVMS$gear_code == gear,]) +
+    d %>% 
+    dplyr::filter(gear_code %in% topgear[i]) %>% 
+    ggplot(aes(long, lat)) +
+    theme_void() +
+    geom_raster(aes(fill = cols)) +
+    geom_polygon(data = m.core, aes(group = group), fill = "grey") +
+    coord_quickmap(xlim = spatCore$xrange, ylim = spatCore$yrange) +
     scale_fill_manual(values = rev(palette), labels = rev(legval)) +
-    guides(fill = guide_legend(title = paste("Days@Sea", gear))) +
+    guides(fill = guide_legend(title = paste("Days@Sea", topgear[i]))) +
     facet_wrap(~ year, ncol = 2) +
-    theme_icesqc(legend.position = "top")
+    theme(legend.position = "top")
   print(p)
 }
 ```
@@ -267,28 +358,47 @@ for (gear in top3gears) {
 
 ## Number of unique DCF Level 6 codes by year:
 ```{r table-met6, results='asis'}
-kable(count(unique(ICES_VE[,c("LE_MET_level6","year")]),"year"), booktabs = TRUE)
+ICES_VE %>% 
+  dplyr::group_by(year) %>% 
+  dplyr::summarise(freq = dplyr::n_distinct(LE_MET_level6)) %>% 
+  kable(booktabs = TRUE)
 ```
 
 Top 5 DCF Level 6 codes by year:
-```{r top5-met6} 
-top5Met6 <- names(sort(table(ICES_VE$LE_MET_level6), decreasing = TRUE))
-top5Met6 <- top5Met6[1:pmin(5, length(top5Met6))]
-kable(table(ICES_VE$LE_MET_level6, ICES_VE$year)[top5Met6,,drop=FALSE], booktabs = TRUE)
+```{r top5-met6}
+top5Met6 <-
+  ICES_VE %>% 
+  dplyr::group_by(LE_MET_level6) %>% 
+  dplyr::count() %>% 
+  dplyr::arrange(desc(n)) %>% 
+  dplyr::slice(1:5) %>% 
+  dplyr::pull(LE_MET_level6)
+d <-
+  ICES_VE %>% 
+  dplyr::filter(LE_MET_level6 %in% top5Met6) %>% 
+  dplyr::group_by(year, LE_MET_level6) %>% 
+  dplyr::count()
+d %>% 
+  tidyr::spread(year, n) %>% 
+  kable(booktabs = TRUE)
 
-qplot(factor(year), 
-      data = ICES_VE[ICES_VE$LE_MET_level6 %in% top5Met6,],
-      geom = "bar", fill = factor(LE_MET_level6)) +
-  xlab("Years") + ylab ("Count") + 
-  scale_fill_grey(guide = guide_legend(title = "Level 6")) +
-  theme_icesqc(legend.position = "right")
+d %>% 
+  ggplot(aes(year, n, fill = LE_MET_level6)) +
+  geom_col() +
+  theme_icesqc(legend.position = "right") +
+  scale_fill_grey() +
+  labs(x = "Year", y = "Count", fill = "Level 6")
 ```
 
 \newpage
 
 ## Average fishing speed:
 ```{r table-average-fishing-speed, results='asis'}
-kable(do.call(rbind, tapply(ICES_VE$avg_fishing_speed, ICES_VE$year, summary)), booktabs = TRUE)
+ICES_VE %>% 
+  dplyr::select(year, avg_fishing_speed) %>% 
+  dplyr::group_by(year) %>% 
+  dplyr::summarise_all(dplyr::funs(min, q25, median, mean, q75, max)) %>% 
+  kable(booktabs = TRUE)
 ```
 
 ```{r average-fishing-speed}
@@ -303,7 +413,11 @@ ggplot(ICES_VE, aes(x = avg_fishing_speed)) +
 
 ## Average fishing hours:
 ```{r table-fishing-hours, results='asis'}
-kable(do.call(rbind, tapply(ICES_VE$fishing_hours, ICES_VE$year, summary)), booktabs = TRUE)
+ICES_VE %>% 
+  dplyr::select(year, fishing_hours) %>% 
+  dplyr::group_by(year) %>% 
+  dplyr::summarise_all(dplyr::funs(min, q25, median, mean, q75, max)) %>% 
+  kable(booktabs = TRUE)
 ```
 
 ```{r fishing-hours}
@@ -318,7 +432,11 @@ ggplot(ICES_VE, aes(x = fishing_hours)) +
 
 ## Average length:
 ```{r table-length, results='asis'}
-kable(do.call(rbind, tapply(ICES_VE$avg_oal, ICES_VE$year, summary)), booktabs = TRUE)
+ICES_VE %>% 
+  dplyr::select(year, avg_oal) %>% 
+  dplyr::group_by(year) %>% 
+  dplyr::summarise_all(dplyr::funs(min, q25, median, mean, q75, max)) %>% 
+  kable(booktabs = TRUE)
 ```
 ```{r length}
 ggplot(ICES_VE, aes(x = avg_oal))+
@@ -332,7 +450,11 @@ ggplot(ICES_VE, aes(x = avg_oal))+
 
 ## Average kW:
 ```{r table-average-kW, results='asis'}
-kable(do.call(rbind, tapply(ICES_VE$avg_kw, ICES_VE$year, summary)), booktabs = TRUE)
+ICES_VE %>% 
+  dplyr::select(year, avg_kw) %>% 
+  dplyr::group_by(year) %>% 
+  dplyr::summarise_all(dplyr::funs(min, q25, median, mean, q75, max)) %>% 
+  kable(booktabs = TRUE)
 ```
 ```{r average-kW}
 ggplot(ICES_VE, aes(x = avg_kw))+
@@ -346,7 +468,11 @@ ggplot(ICES_VE, aes(x = avg_kw))+
 
 ## Average kW-hours:
 ```{r table-kw-fishing-hours, results='asis'}
-kable(do.call(rbind, tapply(ICES_VE$kw_fishinghours, ICES_VE$year, summary)), booktabs = TRUE)
+ICES_VE %>% 
+  dplyr::select(year, kw_fishinghours) %>% 
+  dplyr::group_by(year) %>% 
+  dplyr::summarise_all(dplyr::funs(min, q25, median, mean, q75, max)) %>% 
+  kable(booktabs = TRUE)
 ```
 ```{r kw-fishing-hours}
 ggplot(ICES_VE, aes(x = kw_fishinghours))+
@@ -365,173 +491,139 @@ ps$table
 for (p in ps$plots) print(p)
 ```
 
+```{r}
+d <- 
+  ICES_VE %>% 
+  dplyr::group_by(year, gear_code) %>% 
+  dplyr::summarise(totweight = sum(totweight, na.rm = TRUE)) 
+d %>% 
+  tidyr::spread(year, totweight) %>% 
+  kable(booktab = TRUE)
+d %>% 
+  ggplot(aes(year, totweight)) +
+  theme_icesqc() +
+  geom_line() +
+  facet_grid(gear_code ~ ., scale = "free_y") +
+  expand_limits(y = 0) +
+  scale_x_continuous(breaks = c(2000:2030)) +
+  labs(x = "Year", y = "kg landed")
+```
+
+
 \newpage
 
 ## Spatial distribution of effort by year:
 ```{r spatial-effort-year, results='asis', fig.height = 9}
-
-coordGrd <- unique(ICES_VE[,c("SI_LONG","SI_LATI","year","c_square")])
-# make fortified DF for csquares
-polVMS <- make_polVMS(coordGrd)
-polVMS$year     <- rep(coordGrd$year, each = 5)
-polVMS$c_square <- rep(coordGrd$c_square, each = 5)
-
-# aggregate fishing days
-dat <- with(ICES_VE,
-            aggregate(fishing_hours/24,
-                 by = list(year = year, c_square = c_square),
-                 FUN = sum, na.rm = TRUE))
-dat <- dplyr::rename(dat, fishing_days = x)
+d <-
+  ICES_VE %>% 
+  dplyr::group_by(year, long = SI_LONG, lat = SI_LATI) %>% 
+  dplyr::summarise(fishing_days = sum(fishing_hours, na.rm = TRUE)/24)
 
 # legend calculations
-steps <- ceiling(max(dat$fishing_days, na.rm = TRUE)/250)
 breaks <- unique(c(-1, 0, steps * c(1, 2.5, 5, 10, 25, 50, 100, 250)))
 legval <- paste(breaks[-length(breaks)], "<=", breaks[-1L])
 legval[1] <- "0"
 
 palette <- c("white", RColorBrewer::brewer.pal(length(breaks)-2, "YlOrRd"))  
-dat$colgrp <- as.numeric(cut(dat$fishing_days, breaks = breaks))
-dat$cols <- palette[dat$colgrp]
+d$colgrp <- as.numeric(cut(d$fishing_days, breaks = breaks))
+d$cols <- palette[d$colgrp]
 
-# join dat onto polVMS (much faster than left_join or merge)
-# make joining keys
-a_by <- apply(dat[c("year","c_square")], 1, paste, collapse = ".")
-b_by <- apply(polVMS[c("year","c_square")], 1, paste, collapse = ".")
-ib_by <- as.integer(factor(b_by, levels = a_by))
-polVMS$cols <- dat$cols[ib_by]
-
-# do plots
-spatialplot(polVMS) +
-  scale_fill_manual(values = rev(palette), labels = rev(legval)) +
-  guides(fill = guide_legend(title = "Days@Sea")) +
-  facet_wrap(~ year, ncol = 2) +
-  theme_icesqc(legend.position = "top")
+d %>% 
+    ggplot(aes(long, lat)) +
+    theme_void() +
+    geom_raster(aes(fill = cols)) +
+    geom_polygon(data = m.core, aes(group = group), fill = "grey") +
+    coord_quickmap(xlim = spatCore$xrange, ylim = spatCore$yrange) +
+    scale_fill_manual(values = rev(palette), labels = rev(legval)) +
+    guides(fill = guide_legend(title = paste("Days@Sea", topgear[i]))) +
+    facet_wrap(~ year, ncol = 2) +
+    theme(legend.position = "top")
 ```
 
 \newpage
 
 ## Spatial difference of effort `r tempBound[1]`:`r (tempBound[2]-1)` vs `r tempBound[2]`
+
 ```{r spatial-effort--difference1, results='asis', fig.height = 9}
-base <- with(ICES_VE, 
-             aggregate(fishing_hours, 
-                       by = list(c_square = c_square, year = year),
-                       FUN = sum, na.rm = TRUE))
-base <- dplyr::rename(base, fishing_hours = x)
+d <- 
+  ICES_VE %>% 
+  dplyr::select(long = SI_LONG, lat = SI_LATI) %>% 
+  dplyr::distinct() %>% 
+  dplyr::left_join(ICES_VE %>% 
+                     dplyr::filter(year %in% tempBound[2]) %>% 
+                     dplyr::group_by(long = SI_LONG, lat = SI_LATI) %>% 
+                     dplyr::summarise(fishing_hours = sum(fishing_hours, na.rm = TRUE))) %>% 
+  dplyr::left_join(ICES_VE %>% 
+                     dplyr::filter(year < tempBound[2]) %>% 
+                     dplyr::group_by(year, long = SI_LONG, lat = SI_LATI) %>% 
+                     dplyr::summarise(fishing_hours = sum(fishing_hours, na.rm = TRUE)) %>% 
+                     dplyr::group_by(long, lat) %>% 
+                     dplyr::summarise(fishing_hours_median = median(fishing_hours, na.rm = TRUE))) %>% 
+  dplyr::mutate(fishing_hours = ifelse(is.na(fishing_hours), 0, fishing_hours),
+                fishing_hours_median = ifelse(is.na(fishing_hours_median), 0, fishing_hours_median),
+                # calculate ratio (with exceptions for zeros)
+                ratio = 1/(pmax(fishing_hours, 1e-9) / pmax(fishing_hours_median, 1e-9)))
 
-# calculate total fishing hours for recent year
-recent <- base[base$year == tempBound[2],]
-
-# calculate median of the total fishing hours per square for historical years
-base <- with(base[base$year < tempBound[2],], 
-             aggregate(fishing_hours,
-                       by = list(c_square = c_square), 
-                       FUN = median, na.rm = TRUE))
-base <- dplyr::rename(base, fishing_hours_median = x)
-
-# join
-dat2plot <- dplyr::full_join(base,
-                             recent[,c("c_square","fishing_hours")])
-
-# set NAs to zero
-dat2plot$fishing_hours_median[is.na(dat2plot$fishing_hours_median)] <- 0
-dat2plot$fishing_hours[is.na(dat2plot$fishing_hours)] <- 0
-
-# calculate ratio (with exceptions for zeros)
-dat2plot$ratio <- 1/with(dat2plot, pmax(fishing_hours, 1e-9) / pmax(fishing_hours_median, 1e-9))
-
-# add back in lat and long
-dat2plot <- cbind(dat2plot, 
-                  vmstools::CSquare2LonLat(dat2plot$c_square, degrees = 0.05))
-
-# make 'fortified' data frame
-polVMS <- make_polVMS(dat2plot)
-polVMS$c_square <- rep(dat2plot$c_square, each = 5)
-
-# set up legend
-# This is not what the legend says.... there is no +/-5% break!
 breaks <- c(-Inf, 1/2, 1/1.5, 1/1.25, 1/1.05, 1, 1.05, 1.25, 1.5, 2, Inf)
 legval <- c("historic >>","historic> +100%","historic> +50%","historic> +25%",
             "+/-5%",
             "recent> +5%","recent> +25%","recent> +50%","recent> +100%","recent >>")
 palette <- RColorBrewer::brewer.pal(length(breaks)-1,"RdYlBu")  #colour for fishing intensity
-dat2plot$colgrp <- as.numeric(cut(dat2plot$ratio, breaks = breaks))
-dat2plot$cols <- palette[dat2plot$colgrp]
+d$colgrp <- as.numeric(cut(d$ratio, breaks = breaks))
+d$cols <- palette[d$colgrp]
 
-# join dat onto polVMS (much faster than left_join or merge)
-# make joining keys
-a_by <- dat2plot$c_square
-b_by <- polVMS$c_square
-ib_by <- as.integer(factor(b_by, levels = a_by))
-polVMS$cols <- dat2plot$cols[ib_by]
-# NOTE dark blue here just means that nothing was observered before, and now there is something... 
-# - could be 1 hour of fishing
-grps <- sort(unique(dat2plot$colgrp))
-spatialplot(polVMS) +
-  guides(fill = guide_legend(title = "Days@Sea")) +
-  scale_fill_manual(values = rev(palette)[grps], labels = legval[grps]) +
-  theme_icesqc(legend.position = "right")
+d %>% 
+    ggplot(aes(long, lat)) +
+    theme_void() +
+    geom_raster(aes(fill = cols)) +
+    geom_polygon(data = m.core, aes(group = group), fill = "grey") +
+    coord_quickmap(xlim = spatCore$xrange, ylim = spatCore$yrange) +
+    scale_fill_manual(values = rev(palette), labels = rev(legval)) +
+    labs(x = NULL, y = NULL, fill = "Days@Sea")
 ```
+
 
 \newpage
 
 ## Spatial difference of effort `r tempBound[2]-1` vs `r tempBound[2]`
 
 ```{r spatial-effort--difference2, results='asis', fig.height = 9}
-base <- with(ICES_VE, 
-             aggregate(fishing_hours, 
-                       by = list(c_square = c_square, year = year),
-                       FUN = sum, na.rm = TRUE))
-base <- dplyr::rename(base, fishing_hours = x)
+d <- 
+  ICES_VE %>% 
+  dplyr::filter(year >= (tempBound[2]-1)) %>% 
+  dplyr::select(long = SI_LONG, lat = SI_LATI) %>% 
+  dplyr::distinct() %>% 
+  dplyr::left_join(ICES_VE %>% 
+                     dplyr::filter(year %in% tempBound[2]) %>% 
+                     dplyr::group_by(long = SI_LONG, lat = SI_LATI) %>% 
+                     dplyr::summarise(fishing_hours = sum(fishing_hours, na.rm = TRUE))) %>% 
+  dplyr::left_join(ICES_VE %>% 
+                     dplyr::filter(year %in% (tempBound[2]-1)) %>% 
+                     dplyr::group_by(year, long = SI_LONG, lat = SI_LATI) %>% 
+                     dplyr::summarise(fishing_hours = sum(fishing_hours, na.rm = TRUE)) %>% 
+                     dplyr::group_by(long, lat) %>% 
+                     dplyr::summarise(fishing_hours_median = median(fishing_hours, na.rm = TRUE))) %>% 
+  dplyr::mutate(fishing_hours = ifelse(is.na(fishing_hours), 0, fishing_hours),
+                fishing_hours_median = ifelse(is.na(fishing_hours_median), 0, fishing_hours_median),
+                # calculate ratio (with exceptions for zeros)
+                ratio = 1/(pmax(fishing_hours, 1e-9) / pmax(fishing_hours_median, 1e-9)))
 
-# calculate total fishing hours for recent year
-recent <- base[base$year == tempBound[2],]
-
-# previous year
-base <- base[base$year == tempBound[2]-1,]
-base <- dplyr::rename(base, fishing_hours_median = fishing_hours)
-
-# join
-dat2plot <- dplyr::full_join(base,
-                             recent[,c("c_square","fishing_hours")])
-
-# set NAs to zero
-dat2plot$fishing_hours_median[is.na(dat2plot$fishing_hours_median)] <- 0
-dat2plot$fishing_hours[is.na(dat2plot$fishing_hours)] <- 0
-
-# calculate ratio (with exceptions for zeros)
-dat2plot$ratio <- 1/with(dat2plot, pmax(fishing_hours, 1e-9) / pmax(fishing_hours_median, 1e-9))
-
-# add back in lat and long
-dat2plot <- cbind(dat2plot, 
-                  vmstools::CSquare2LonLat(dat2plot$c_square, degrees = 0.05))
-
-# make 'fortified' data frame
-polVMS <- make_polVMS(dat2plot)
-polVMS$c_square <- rep(dat2plot$c_square, each = 5)
-
-# set up legend
-# This is not what the legend says.... there is no +/-5% break!
 breaks <- c(-Inf, 1/2, 1/1.5, 1/1.25, 1/1.05, 1, 1.05, 1.25, 1.5, 2, Inf)
 legval <- c("historic >>","historic> +100%","historic> +50%","historic> +25%",
             "+/-5%",
             "recent> +5%","recent> +25%","recent> +50%","recent> +100%","recent >>")
 palette <- RColorBrewer::brewer.pal(length(breaks)-1,"RdYlBu")  #colour for fishing intensity
-dat2plot$colgrp <- as.numeric(cut(dat2plot$ratio, breaks = breaks))
-dat2plot$cols <- palette[dat2plot$colgrp]
+d$colgrp <- as.numeric(cut(d$ratio, breaks = breaks))
+d$cols <- palette[d$colgrp]
 
-# join dat onto polVMS (much faster than left_join or merge)
-# make joining keys
-a_by <- dat2plot$c_square
-b_by <- polVMS$c_square
-ib_by <- as.integer(factor(b_by, levels = a_by))
-polVMS$cols <- dat2plot$cols[ib_by]
-# NOTE dark blue here just means that nothing was observered before, and now there is something... 
-# - could be 1 hour of fishing
-grps <- sort(unique(dat2plot$colgrp))
-spatialplot(polVMS) +
-  guides(fill = guide_legend(title = "Days@Sea")) +
-  scale_fill_manual(values = rev(palette)[grps], labels = legval[grps]) +
-  theme_icesqc(legend.position = "right")
+d %>% 
+    ggplot(aes(long, lat)) +
+    theme_void() +
+    geom_raster(aes(fill = cols)) +
+    geom_polygon(data = m.core, aes(group = group), fill = "grey") +
+    coord_quickmap(xlim = spatCore$xrange, ylim = spatCore$yrange) +
+    scale_fill_manual(values = rev(palette), labels = rev(legval)) +
+    labs(x = NULL, y = NULL, fill = "Days@Sea")
 ```
 
 \newpage
@@ -544,6 +636,25 @@ ps$table
 for (p in ps$plots) print(p)
 ```
 
+```{r}
+d <-
+  ICES_VE %>% 
+  dplyr::group_by(year, gear_code) %>% 
+  dplyr::summarise(value = median(totweight/kw_fishinghours, na.rm = TRUE))
+d %>% 
+  tidyr::spread(year, value) %>% 
+  kable(booktab = TRUE)
+d %>% 
+  ggplot(aes(year, value)) +
+  theme_icesqc() +
+  geom_line() +
+  facet_grid(gear_code ~ ., scale = "free_y") +
+  expand_limits(y = 0) +
+  scale_x_continuous(breaks = c(2000:2030)) +
+  labs(x = "Year", y = "kg/kWh")
+```
+
+
 \newpage
 
 ## Value by gear by year:
@@ -551,6 +662,24 @@ for (p in ps$plots) print(p)
 ps <- gear_splits(ICES_VE$totvalue, data = ICES_VE, "EUR landed", gear_groups = 4, func = sum)
 ps$table
 for (p in ps$plots) print(p)
+```
+
+```{r}
+d <-
+  ICES_VE %>% 
+  dplyr::group_by(year, gear_code) %>% 
+  dplyr::summarise(value = mean(totvalue, na.rm = TRUE))
+d %>% 
+  tidyr::spread(year, value) %>% 
+  kable(booktab = TRUE)
+d %>% 
+  ggplot(aes(year, value)) +
+  theme_icesqc() +
+  geom_line() +
+  facet_grid(gear_code ~ ., scale = "free_y") +
+  expand_limits(y = 0) +
+  scale_x_continuous(breaks = c(2000:2030)) +
+  labs(x = "Year", y = "EUR landed")
 ```
 
 \newpage
@@ -563,6 +692,25 @@ ps$table
 for (p in ps$plots) print(p)
 ```
 
+```{r}
+d <-
+  ICES_VE %>% 
+  dplyr::group_by(year, gear_code) %>% 
+  dplyr::summarise(value = median(totvalue/kw_fishinghours, na.rm = TRUE))
+d %>% 
+  tidyr::spread(year, value) %>% 
+  kable(booktab = TRUE)
+d %>% 
+  ggplot(aes(year, value)) +
+  theme_icesqc() +
+  geom_line() +
+  facet_grid(gear_code ~ ., scale = "free_y") +
+  expand_limits(y = 0) +
+  scale_x_continuous(breaks = c(2000:2030)) +
+  labs(x = "Year", y = "EUR landed")
+```
+
+
 \newpage
 
 ##  Average price:
@@ -572,6 +720,28 @@ ps <- gear_splits(with(ICES_VE, totvalue/totweight), data = ICES_VE, "Mean price
 ps$table
 for (p in ps$plots) print(p)
 ```
+
+```{r}
+d <-
+  ICES_VE %>% 
+  dplyr::group_by(year, gear_code) %>% 
+  dplyr::summarise(value = median(totvalue/totweight, na.rm = TRUE))
+d %>% 
+  tidyr::spread(year, value) %>% 
+  kable(booktab = TRUE)
+d %>% 
+  ggplot(aes(year, value)) +
+  theme_icesqc() +
+  geom_line() +
+  facet_grid(gear_code ~ ., scale = "free_y") +
+  expand_limits(y = 0) +
+  scale_x_continuous(breaks = c(2000:2030)) +
+  labs(x = "Year", y = "Mean price (EUR/kg)")
+```
+
+
+
+
 
 `r if (!hasvms) {"\\end{comment}"}`
 
