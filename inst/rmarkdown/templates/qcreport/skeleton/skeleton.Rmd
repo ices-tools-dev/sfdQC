@@ -1,5 +1,5 @@
 ---
-title: "ICES VMS datacall quality check report for `params$country`"
+title: "ICES VMS datacall quality check report for `r params$country`"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 header-includes:
   - \usepackage{comment}
@@ -9,13 +9,11 @@ output: pdf_document
 params:
     LE_filename: "data/LE.csv"
     VE_filename: "data/VE.csv"
-    country: "test"
-    eurPols: "begin/initial/eurPols.Rdata"
-    utilities: "utilities.R"
+    country: "Gdogo"
 ---
 
 <!-- QCTEMPLATE: header -->
-```{r setup, eval=TRUE, echo=FALSE, cache=FALSE}
+```{r setup, eval=TRUE, echo=FALSE, cache=FALSE, message = FALSE}
 library(knitr)
 library(kableExtra)
 
@@ -40,6 +38,7 @@ my_png <- function(file, width, height) {
       res = 800, units = "in", pointsize = 20)
 }
 
+library(sfdQC)
 library(plyr)
 library(ggplot2)
 library(vmstools)
@@ -48,10 +47,7 @@ library(doBy)
 library(reshape2)
 ```
 
-```{r load-data}
-load(params$eurPols)
-polLand <- fortify(eurPols)
-```
+
 <!------------------------------------------------------------------------------
 Data handling
 ---------------------------------------------------------------------------- -->
@@ -99,13 +95,6 @@ spatBoundLog <- list(xrange = range(ICES_LE$SI_LONG, na.rm=TRUE),
 tempBoundLog <- range(ICES_LE$year, na.rm=TRUE)
 ```
 
-
-<!--------------------------
-Utility stuff
------------------------- -->
-```{r utilities}
-source(params$utilities)
-```
 
 
 <!------------------------------------------------------------------------------
