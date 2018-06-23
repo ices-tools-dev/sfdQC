@@ -38,13 +38,18 @@ my_png <- function(file, width, height) {
       res = 800, units = "in", pointsize = 20)
 }
 
-library(sfdQC)
-library(plyr)
-library(ggplot2)
-library(vmstools)
+library(tidyverse)
+library(maps)
+library(lubridate)
 library(RColorBrewer)
-library(doBy)
-library(reshape2)
+library(sfdQC)
+library(vmstools)
+grade <- function(x, dx) {
+  brks <- seq(floor(min(x)), ceiling(max(x)),dx)
+  ints <- findInterval(x, brks, all.inside = TRUE)
+  x <- (brks[ints] + brks[ints + 1]) / 2
+  return(x)
+}
 ```
 
 
@@ -165,12 +170,48 @@ kable(dat2tab, booktabs = TRUE)
 
 ## Area for which data has been submitted:
 ```{r area-of-data,  fig.height = 9}
-coordGrd <- unique(ICES_VE[, c("SI_LONG", "SI_LATI", "year")])
-data_coverage(coordGrd, spatBound, res = 0.5)
+d <- 
+  ICES_VE %>% 
+  as_tibble() %>% 
+  select(long = SI_LONG, lat = SI_LATI, year) %>% 
+  mutate(long = grade(long, 0.5),
+         lat  = grade(lat,  0.5)) %>% 
+  distinct()
+
+map_data("world",
+         xlim = spatBound$xrange, 
+         ylim = spatBound$yrange) %>% 
+  ggplot(aes(long, lat)) +
+  theme_void() +
+  geom_polygon(aes(group = group), fill = "grey90") +
+  geom_raster(data = d, fill = "red") +
+  coord_quickmap(xlim = spatBound$xrange,
+                 ylim = spatBound$yrange) +
+  geom_path(aes(group = group), colour = "grey", lwd = 0.1) +
+  facet_wrap(~ year, ncol = 2) +
+  labs(x = NULL, y = NULL)
 ```
 
+
 ```{r area-of-data2,  fig.height = 9}
-data_coverage(coordGrd, spatCore, res = 0.05)
+d <- 
+  ICES_VE %>% 
+  as_tibble() %>% 
+  select(long = SI_LONG, lat = SI_LATI, year) %>% 
+  distinct()
+
+map_data("world",
+         xlim = spatCore$xrange, 
+         ylim = spatCore$yrange) %>% 
+  ggplot(aes(long, lat)) +
+  theme_void() +
+  geom_polygon(aes(group = group), fill = "grey90") +
+  geom_raster(data = d, fill = "red") +
+  coord_quickmap(xlim = spatCore$xrange,
+                 ylim = spatCore$yrange) +
+  geom_path(aes(group = group), colour = "grey", lwd = 0.1) +
+  facet_wrap(~ year, ncol = 2) +
+  labs(x = NULL, y = NULL)
 ```
 
 \newpage
@@ -645,13 +686,39 @@ kable(dat2tab, booktabs = TRUE)
 
 ## Area for which data has been submitted:
 ```{r , results='asis',fig.height = 9}
-coordGrd <- unique(ICES_LE[,c("SI_LONG","SI_LATI","year")])
-data_coverage(coordGrd, spatBoundLog, res = 1)
+d <- 
+  ICES_LE %>% 
+  select(long = SI_LONG, lat = SI_LATI, year) %>% 
+  distinct()
+
+map_data("world",
+         xlim = spatBoundLog$xrange, 
+         ylim = spatBoundLog$yrange) %>% 
+  ggplot(aes(long, lat)) +
+  theme_void() +
+  geom_polygon(aes(group = group), fill = "grey90") +
+  geom_raster(data = d, fill = "red") +
+  coord_quickmap(xlim = spatBoundLog$xrange,
+                 ylim = spatBoundLog$yrange) +
+  geom_path(aes(group = group), colour = "black", lwd = 0.1) +
+  facet_wrap(~ year, ncol = 2) +
+  labs(x = NULL, y = NULL)
 ```
 
 
 ```{r , results='asis',fig.height = 9}
-data_coverage(coordGrd, spatCore, res = 1)
+map_data("world",
+         xlim = spatCore$xrange, 
+         ylim = spatCore$yrange) %>% 
+  ggplot(aes(long, lat)) +
+  theme_void() +
+  geom_polygon(aes(group = group), fill = "grey90") +
+  geom_raster(data = d, fill = "red") +
+  coord_quickmap(xlim = spatCore$xrange,
+                 ylim = spatCore$yrange) +
+  geom_path(aes(group = group), colour = "black", lwd = 0.1) +
+  facet_wrap(~ year, ncol = 2) +
+  labs(x = NULL, y = NULL)
 ```
 
 \newpage
