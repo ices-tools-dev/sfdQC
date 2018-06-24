@@ -29,7 +29,7 @@ metier_lookup <-
   collect(n = Inf)
 
 # disconnect
-odbcClose(conn)
+dbDisconnect(conn)
 
 # add to data folder
 devtools::use_data(metier_lookup, overwrite = TRUE)
