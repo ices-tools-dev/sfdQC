@@ -1,38 +1,42 @@
 ---
-title: "ICES VMS datacall quality check report for `r params$country`"
-date: "`r format(Sys.time(), '%d %B, %Y')`"
+title: "SFD QC report:`r params$country`"
 header-includes:
-  - \usepackage{comment}
-  - \usepackage{booktabs}
-  - \usepackage{longtable}
-output: pdf_document
+- \usepackage{comment}
+- \usepackage{booktabs}
+- \usepackage{longtable}
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    fig_height: 6
+    fig_width: 9
+    toc: yes
+    toc_depth: 4
+    toc_float:
+      collapsed: yes
 params:
-    LE_filename: "data/LE.csv"
-    VE_filename: "data/VE.csv"
-    country: "Gdogo"
+  LE_filename: data/LE.csv
+  VE_filename: data/VE.csv
+  country: Gdogo
 ---
 
 <!-- QCTEMPLATE: header -->
 ```{r setup, eval=TRUE, echo=FALSE, cache=FALSE, message = FALSE}
-library(knitr)
-library(kableExtra)
-
-opts_chunk$set(comment   = NA,
+knitr::opts_chunk$set(comment   = NA,
                warning   = FALSE,
                message   = FALSE,
                error     = FALSE,
                echo      = FALSE,
                eval      = TRUE,
-               dev = "my_png",
-               fig.ext = "png",
+               #dev = "my_png",
+               #fig.ext = "png",
                fig.align = 'left',
-               tab.align = 'left',
-               fig.width = 5.5)
+               tab.align = 'left')
+#options(knitr.kable.NA = '-')
+#options(knitr.table.format = 'latex')
+#options(digits = 4)
+```
 
-options(knitr.kable.NA = '-')
-options(knitr.table.format = 'latex')
-options(digits = 4)
-
+```{r setup2}
 my_png <- function(file, width, height) {
   png(file, width = width, height = height, 
       res = 800, units = "in", pointsize = 20)
@@ -42,6 +46,7 @@ library(tidyverse)
 library(maps)
 library(lubridate)
 library(RColorBrewer)
+library(viridisLite)
 library(sfdQC)
 library(vmstools)
 grade <- function(x, dx) {
@@ -60,16 +65,16 @@ Data handling
 #Read in latest submission -->",
 ICES_LE <- read.table(params$LE_filename, sep = ',', header = TRUE,
           stringsAsFactors = FALSE, na.strings = 'NULL',
-          colClasses = c('character', 'character', 'numeric', 'numeric',
+          colClasses = c('character', 'character', 'integer', 'integer',
                          'character', 'character', 'character', 'numeric',
                          'character', 'character',
                          'numeric', 'numeric', 'numeric'))
 ICES_VE <- read.table(params$VE_filename, sep = ',', header = TRUE,
           stringsAsFactors = FALSE, na.strings = 'NULL',
-          colClasses = c('character', 'character', 'numeric', 'numeric',
+          colClasses = c('character', 'character', 'integer', 'integer',
                          'character', 'character', 'character', 'character',
                          'numeric', 'numeric', 'numeric', 'numeric',
-                         'numeric', 'numeric', 'numeric', 'numeric'))
+                         'numeric', 'numeric', 'numeric', 'numeric', 'numeric'))
 ```
 <!------------------------------------------------------------------------------
 Pre-calculations
@@ -100,13 +105,22 @@ spatBoundLog <- list(xrange = range(ICES_LE$SI_LONG, na.rm=TRUE),
 tempBoundLog <- range(ICES_LE$year, na.rm=TRUE)
 ```
 
+```{r}
+coord <- 
+  coord_quickmap(xlim = range(spatBound$xrange),
+                 ylim = range(spatBound$yrange))
+spatBoundasp <- 
+  coord$aspect(list(x.range = range(spatBound$xrange), 
+                    y.range = range(spatBound$yrange)))
+
+```
 
 
 <!------------------------------------------------------------------------------
 Tables & Figures VMS
 ---------------------------------------------------------------------------- -->
 
-# Quality of the VMS data from `r country`
+# VMS
 
 ```{r check-for-vms, results='asis'}
 hasvms <- nrow(ICES_VE) > 0
@@ -116,27 +130,219 @@ haslogbook <- nrow(ICES_LE) > 0
 `r if (!hasvms) {"No VMS data available\n\\begin{comment}"}`
 
 ```{r set-eval-vms}
-opts_chunk$set(eval = hasvms)
+knitr::opts_chunk$set(eval = hasvms)
 ```
 
-## Years & number of records for which data has been submitted:
+## Records by year
 ```{r records-by-year, results='asis'}
-kable(plyr::count(ICES_VE, 'year'), booktabs = TRUE)
+d <- ICES_VE %>% count(year)
+d %>% knitr::kable(booktabs = TRUE)
+d %>% 
+  ggplot(aes(factor(year), n)) + 
+  theme_icesqc() +
+  geom_col() + 
+  labs(x = "Year", y = "Number of records")
+```
 
-dat2plot <- data.frame(table(ICES_VE$year))
-colnames(dat2plot) <- c("Year","Freq")
+\newpage
 
-ggplot(dat2plot,aes(x=Year,y=Freq)) +
-  geom_bar(stat="identity") + xlab("Year") + ylab("Number of records") +
+## Records by month
+```{r pings-by-month}
+d <- ICES_VE %>% count(month, year)
+d %>% spread(year, n) %>% knitr::kable(booktabs = TRUE)
+d %>% 
+  ggplot(aes(factor(year), n, fill = factor(month))) + 
+  theme_icesqc(legend.position = "right") +
+  geom_col() + 
+  scale_fill_grey() +
+  labs(x = "Year", y = "Number of records", fill = "Month")
+```
+
+\newpage
+
+## Vessel length categories
+```{r records-by-vessel-length}
+d <- ICES_VE %>% count(variable = vessel_length_category, year)
+d %>% spread(year, n) %>% knitr::kable(booktabs = TRUE)
+d %>% 
+  ggplot(aes(factor(year), n, fill = factor(variable))) + 
+  theme_icesqc(legend.position = "right") +
+  geom_col() + 
+  scale_fill_grey() +
+  labs(x = "Year", y = "Number of records", fill = "Length category")
+```
+
+\newpage
+
+## Gear code
+```{r records-by-gear-code, results='asis'}
+d <- ICES_VE %>% count(variable = gear_code, year)
+d %>% spread(year, n) %>% knitr::kable(booktabs = TRUE)
+d %>% 
+  ggplot(aes(factor(year), n, fill = factor(variable))) + 
+  theme_icesqc(legend.position = "right") +
+  geom_col() + 
+  scale_fill_grey() +
+  labs(x = "Year", y = "Number of records", fill = "Gear code")
+```
+
+## Unique DCF Level 6 codes
+```{r table-met6, results='asis'}
+ICES_VE %>% 
+  select(variable = LE_MET_level6, year) %>% 
+  distinct() %>% 
+  count(year) %>% 
+  knitr::kable(booktabs = TRUE)
+```
+
+## Top 5 DCF Level 6 codes
+```{r top5-met6} 
+top5Met6 <- ICES_VE %>% count(LE_MET_level6) %>% slice(1:5) %>% pull(LE_MET_level6)
+d <- ICES_VE %>% 
+  filter(LE_MET_level6 %in% top5Met6) %>%
+  count(variable = LE_MET_level6, year)
+d %>% spread(year, n) %>% knitr::kable(booktabs = TRUE)
+d %>% 
+  ggplot(aes(factor(year), n, fill = factor(variable))) + 
+  theme_icesqc(legend.position = "right") +
+  geom_col() + 
+  scale_fill_grey() +
+  labs(x = "Year", y = "Number of records", fill = "Level6")
+```
+
+\newpage
+
+## Average fishing speed
+```{r table-average-fishing-speed, results='asis'}
+knitr::kable(do.call(rbind, tapply(ICES_VE$avg_fishing_speed, ICES_VE$year, summary)), booktabs = TRUE)
+```
+
+```{r average-fishing-speed}
+ggplot(ICES_VE, aes(x = avg_fishing_speed)) +
+  geom_histogram() +
+  xlab("Average fishing speed") + ylab ("Count") +
+  facet_wrap( ~ year, ncol = 2) +
   theme_icesqc()
 ```
 
+\newpage
+
+## Average fishing hours
+```{r table-fishing-hours, results='asis'}
+knitr::kable(do.call(rbind, tapply(ICES_VE$fishing_hours, ICES_VE$year, summary)), booktabs = TRUE)
+```
+
+```{r fishing-hours}
+ggplot(ICES_VE, aes(x = fishing_hours)) +
+  geom_histogram() +
+  xlab("Average fishing hours") + ylab("Count") +
+  facet_wrap( ~ year, ncol = 2) +
+  theme_icesqc()
+```
+
+\newpage
+
+## Average length
+```{r table-length, results='asis'}
+knitr::kable(do.call(rbind, tapply(ICES_VE$avg_oal, ICES_VE$year, summary)), booktabs = TRUE)
+```
+
+```{r length}
+ggplot(ICES_VE, aes(x = avg_oal))+
+  geom_histogram() +
+  xlab("Average vessel length") + ylab("Count") +
+  facet_wrap( ~ year, ncol = 2) +
+  theme_icesqc()
+```
+
+\newpage
+
+## Average kW
+```{r table-average-kW, results='asis'}
+knitr::kable(do.call(rbind, tapply(ICES_VE$avg_kw, ICES_VE$year, summary)), booktabs = TRUE)
+```
+
+```{r average-kW}
+ggplot(ICES_VE, aes(x = avg_kw))+
+  geom_histogram() +
+  xlab("Average kW") + ylab ("Count") +
+  facet_wrap( ~ year, ncol = 2) +
+  theme_icesqc()
+```
+
+\newpage
+
+## Average kW-hours
+```{r table-kw-fishing-hours, results='asis'}
+knitr::kable(do.call(rbind, tapply(ICES_VE$kw_fishinghours, ICES_VE$year, summary)), booktabs = TRUE)
+```
+
+```{r kw-fishing-hours}
+ggplot(ICES_VE, aes(x = kw_fishinghours))+
+  geom_histogram() +
+  xlab("Average kW-hours") + ylab("Count") +
+  facet_wrap(~ year, ncol = 2) +
+  theme_icesqc()
+```
+
+\newpage
+
+## Landings by gear by year
+```{r landings-by-gear-year}
+ps <- gear_splits(ICES_VE$totweight, data = ICES_VE, "kg landed", year_groups = 2, gear_groups = 4, func = sum)
+ps$table
+for (p in ps$plots) print(p)
+```
+
+\newpage
+
+## Mean landing per kW fishing hours
+
+```{r landings-by-gear}
+ps <- gear_splits(with(ICES_VE, totweight/kw_fishinghours), data = ICES_VE, "kg/kWh", gear_groups = 4, func = median)
+ps$table
+for (p in ps$plots) print(p)
+```
+
+\newpage
+
+## Value by gear by year
+```{r value-by-gear-year, results='asis'}
+ps <- gear_splits(ICES_VE$totvalue, data = ICES_VE, "EUR landed", gear_groups = 4, func = sum)
+ps$table
+if(any(!is.na(ICES_VE$totvalue))) for (p in ps$plots) print(p)
+```
+
+\newpage
+
+## Median value per KW fishing hours by year
+
+```{r mean-value-by-KWhours-year, results='asis'}
+ps <- gear_splits(with(ICES_VE, totvalue/kw_fishinghours), data = ICES_VE, "EUR/kWh", gear_groups = 4, func = median)
+ps$table
+if(any(!is.na(ICES_VE$totvalue))) for (p in ps$plots) print(p)
+```
+
+\newpage
+
+##  Average price
+
+```{r price, results='asis'}
+ps <- gear_splits(with(ICES_VE, totvalue/totweight), data = ICES_VE, "Mean price (EUR/kg)", gear_groups = 4, func = median)
+ps$table
+if(any(!is.na(ICES_VE$totvalue))) for (p in ps$plots) print(p)
+```
+
+`r if (!hasvms) {"\\end{comment}"}`
+
+\newpage
+
 `r if (any(is.na(ICES_VE$SI_LONG))) {"\\newpage"}`
 
-## Records assigned to invalid Statistical Rectangles
+## Invalid Rectangles
 ```{r invalid stat-sqrs}
 if (any(is.na(ICES_VE$SI_LONG))) {
-  kable(table(`ICES Rectangle` = ICES_VE$ICES_rectangle[is.na(ICES_VE$SI_LONG)],
+  knitr::kable(table(`ICES Rectangle` = ICES_VE$ICES_rectangle[is.na(ICES_VE$SI_LONG)],
               Year = ICES_VE$year[is.na(ICES_VE$SI_LONG)]), booktabs = TRUE)
 } else {
   x <- "There were no invalid Statistical Rectangles reported"
@@ -149,26 +355,17 @@ if (any(is.na(ICES_VE$SI_LONG))) {
 
 \newpage
 
-## Distribution of pings by month:
-```{r pings-by-month}
-kable(table(ICES_VE$month, ICES_VE$year), booktabs = TRUE)
+## Spatial extent
 
-qplot(factor(year),data=ICES_VE, geom="bar",fill=factor(month)) +
-  xlab("Years") + ylab ("Count") + scale_fill_grey(guide=guide_legend(title="Month")) +
-  theme_icesqc()
-```
-
-\newpage
-
-## Spatial extent of data submitted by year:
+### Range by year
 ```{r table-exent}
 dat2tab <- as.matrix(aggregate(ICES_VE$SI_LONG,by=list(ICES_VE$year),FUN=range))
 dat2tab <- cbind(dat2tab,as.matrix(aggregate(ICES_VE$SI_LATI,by=list(ICES_VE$year),FUN=range)[,-1]))
 colnames(dat2tab) <- c("Year", "min lon", "max lon", "min lat", "max lat")
-kable(dat2tab, booktabs = TRUE)
+knitr::kable(dat2tab, booktabs = TRUE)
 ```
 
-## Area for which data has been submitted:
+### Full area
 ```{r area-of-data,  fig.height = 9}
 d <- 
   ICES_VE %>% 
@@ -192,7 +389,7 @@ map_data("world",
   labs(x = NULL, y = NULL)
 ```
 
-
+### Core area
 ```{r area-of-data2,  fig.height = 9}
 d <- 
   ICES_VE %>% 
@@ -216,32 +413,8 @@ map_data("world",
 
 \newpage
 
-## Frequency of vessel length categories by year:
-```{r records-by-vessel-length}
-kable(table(ICES_VE$vessel_length_category,ICES_VE$year), booktabs = TRUE)
-
-qplot(factor(year), data = ICES_VE, geom = "bar", fill = factor(vessel_length_category)) +
-  xlab("Years") + ylab ("Count") + 
-  scale_fill_grey(guide = guide_legend(title = "Length category")) +
-  theme_icesqc(legend.position = "right")
-```
-
-\newpage
-
-## Frequency of gear codes by year:
-```{r records-by-gear-code, results='asis'}
-kable(table(ICES_VE$gear_code,ICES_VE$year), booktabs = TRUE)
-
-qplot(factor(year), data = ICES_VE, geom = "bar", fill = factor(gear_code)) +
-  xlab("Years") + ylab ("Count") + 
-  scale_fill_grey(guide = guide_legend(title = "Gear code")) +
-  theme_icesqc(legend.position = "right")
-```
-
-\newpage
-
-## Spatial extend of 3 most dominant gears:
-```{r spatial-extent-dominant-gears, fig.height = 9}
+## 3 most dominant gear
+```{r spatial-extent-dominant-gears, fig.height = 9, eval = FALSE}
 # get 3 main gears
 gear_table <- with(ICES_VE, aggregate(fishing_hours, list(gear_code = gear_code), sum, na.rm = TRUE))
 gear_table <- gear_table[order(gear_table$x, decreasing = TRUE),]
@@ -293,112 +466,59 @@ for (gear in top3gears) {
 }
 ```
 
+```{r, fig.heigth = 10}
+top3gears <-
+  ICES_VE %>% 
+  group_by(gear_code) %>%
+  summarise(fishing_hours = sum(fishing_hours, na.rm = TRUE)) %>%
+  arrange(desc(fishing_hours)) %>% 
+  slice(1:3) %>%
+  pull(gear_code)
+d <- 
+  ICES_VE %>% 
+  as_tibble() %>% 
+  filter(gear_code %in% top3gears) %>% 
+  select(year, long = SI_LONG, lat = SI_LATI, gear_code, fishing_hours) %>% 
+  group_by(year, gear_code, long, lat) %>% 
+  summarise(value = sum(fishing_hours, na.rm = TRUE) / 24)
 
+#d %>% group_by(year) %>% summarise(min = min(value), max = max(value))
+breaks <- c(0, 1, 2.5, 5, 10, 25, 50, 100, 250)
+labels <- cut(0:250, breaks = breaks) %>% unique() %>% as.character()
+#x <- cut(d$value, breaks = breaks)
 
-## Number of unique DCF Level 6 codes by year:
-```{r table-met6, results='asis'}
-kable(count(unique(ICES_VE[,c("LE_MET_level6","year")]),"year"), booktabs = TRUE)
-```
-
-Top 5 DCF Level 6 codes by year:
-```{r top5-met6} 
-top5Met6 <- names(sort(table(ICES_VE$LE_MET_level6), decreasing = TRUE))
-top5Met6 <- top5Met6[1:pmin(5, length(top5Met6))]
-kable(table(ICES_VE$LE_MET_level6, ICES_VE$year)[top5Met6,,drop=FALSE], booktabs = TRUE)
-
-qplot(factor(year), 
-      data = ICES_VE[ICES_VE$LE_MET_level6 %in% top5Met6,],
-      geom = "bar", fill = factor(LE_MET_level6)) +
-  xlab("Years") + ylab ("Count") + 
-  scale_fill_grey(guide = guide_legend(title = "Level 6")) +
-  theme_icesqc(legend.position = "right")
-```
-
-\newpage
-
-## Average fishing speed:
-```{r table-average-fishing-speed, results='asis'}
-kable(do.call(rbind, tapply(ICES_VE$avg_fishing_speed, ICES_VE$year, summary)), booktabs = TRUE)
-```
-
-```{r average-fishing-speed}
-ggplot(ICES_VE, aes(x = avg_fishing_speed)) +
-  geom_histogram() +
-  xlab("Average fishing speed") + ylab ("Count") +
-  facet_wrap( ~ year, ncol = 2) +
-  theme_icesqc()
-```
-
-\newpage
-
-## Average fishing hours:
-```{r table-fishing-hours, results='asis'}
-kable(do.call(rbind, tapply(ICES_VE$fishing_hours, ICES_VE$year, summary)), booktabs = TRUE)
-```
-
-```{r fishing-hours}
-ggplot(ICES_VE, aes(x = fishing_hours)) +
-  geom_histogram() +
-  xlab("Average fishing hours") + ylab("Count") +
-  facet_wrap( ~ year, ncol = 2) +
-  theme_icesqc()
-```
-
-\newpage
-
-## Average length:
-```{r table-length, results='asis'}
-kable(do.call(rbind, tapply(ICES_VE$avg_oal, ICES_VE$year, summary)), booktabs = TRUE)
-```
-```{r length}
-ggplot(ICES_VE, aes(x = avg_oal))+
-  geom_histogram() +
-  xlab("Average vessel length") + ylab("Count") +
-  facet_wrap( ~ year, ncol = 2) +
-  theme_icesqc()
+# NEEDS FIXING: The top range is not shown in the legends
+for(i in 1:length(top3gears)) {
+  p <-
+    map_data("world",
+           xlim = spatCore$xrange, 
+           ylim = spatCore$yrange) %>% 
+    ggplot(aes(long, lat)) +
+    theme_void() +
+    geom_polygon(aes(group = group), fill = "grey90") +
+    geom_raster(data = d %>% filter(gear_code %in% top3gears[i]),
+                aes(long, lat, fill = value)) +
+    scale_fill_gradientn(colours = inferno(256,
+                                           # drop the light yellow colour
+                                           begin = 0.95,
+                                           end = 0),
+                         guide = guide_legend(),
+                         breaks = breaks,
+                         labels = labels) +
+    coord_quickmap(xlim = spatCore$xrange,
+                   ylim = spatCore$yrange) +
+    geom_path(aes(group = group), colour = "grey", lwd = 0.1) +
+    facet_wrap(~ year, ncol = 2) +
+    labs(x = NULL, y = NULL, fill = paste("Days@Sea", top3gears[i])) +
+    theme(legend.position = "top")
+  print(p)
+}
 ```
 
 \newpage
 
-## Average kW:
-```{r table-average-kW, results='asis'}
-kable(do.call(rbind, tapply(ICES_VE$avg_kw, ICES_VE$year, summary)), booktabs = TRUE)
-```
-```{r average-kW}
-ggplot(ICES_VE, aes(x = avg_kw))+
-  geom_histogram() +
-  xlab("Average kW") + ylab ("Count") +
-  facet_wrap( ~ year, ncol = 2) +
-  theme_icesqc()
-```
-
-\newpage
-
-## Average kW-hours:
-```{r table-kw-fishing-hours, results='asis'}
-kable(do.call(rbind, tapply(ICES_VE$kw_fishinghours, ICES_VE$year, summary)), booktabs = TRUE)
-```
-```{r kw-fishing-hours}
-ggplot(ICES_VE, aes(x = kw_fishinghours))+
-  geom_histogram() +
-  xlab("Average kW-hours") + ylab("Count") +
-  facet_wrap(~ year, ncol = 2) +
-  theme_icesqc()
-```
-
-\newpage
-
-## Landings by gear by year:
-```{r landings-by-gear-year}
-ps <- gear_splits(ICES_VE$totweight, data = ICES_VE, "kg landed", year_groups = 2, gear_groups = 4, func = sum)
-ps$table
-for (p in ps$plots) print(p)
-```
-
-\newpage
-
-## Spatial distribution of effort by year:
-```{r spatial-effort-year, results='asis', fig.height = 9}
+## Spatial distribution of effort
+```{r spatial-effort-year, results='asis', fig.height = 9, eval = FALSE}
 
 coordGrd <- unique(ICES_VE[,c("SI_LONG","SI_LATI","year","c_square")])
 # make fortified DF for csquares
@@ -438,10 +558,46 @@ spatialplot(polVMS) +
   theme_icesqc(legend.position = "top")
 ```
 
+```{r, fig.height = 10}
+d <- 
+  ICES_VE %>% 
+  as_tibble() %>% 
+  select(year, long = SI_LONG, lat = SI_LATI, fishing_hours) %>% 
+  group_by(year, long, lat) %>% 
+  summarise(value = sum(fishing_hours, na.rm = TRUE) / 24)
+
+#d %>% group_by(year) %>% summarise(min = min(value), max = max(value))
+breaks <- c(0, 1, 2.5, 5, 10, 25, 50, 100, 250)
+labels <- cut(0:250, breaks = breaks) %>% unique() %>% as.character()
+#x <- cut(d$value, breaks = breaks)
+
+# Note: the top range is not shown in the legends
+map_data("world",
+         xlim = spatCore$xrange, 
+         ylim = spatCore$yrange) %>% 
+  ggplot(aes(long, lat)) +
+  theme_void() +
+  geom_polygon(aes(group = group), fill = "grey90") +
+  geom_raster(data = d, aes(long, lat, fill = value)) +
+  scale_fill_gradientn(colours = inferno(256,
+                                         # drop the light yellow colour
+                                         begin = 0.95,
+                                         end = 0),
+                       guide = guide_legend(),
+                       breaks = breaks,
+                       labels = labels) +
+  coord_quickmap(xlim = spatCore$xrange,
+                 ylim = spatCore$yrange) +
+  geom_path(aes(group = group), colour = "grey", lwd = 0.1) +
+  facet_wrap(~ year, ncol = 2) +
+  labs(x = NULL, y = NULL, fill = "Days@Sea") +
+  theme(legend.position = "top")
+```
+
 \newpage
 
 ## Spatial difference of effort `r tempBound[1]`:`r (tempBound[2]-1)` vs `r tempBound[2]`
-```{r spatial-effort--difference1, results='asis', fig.height = 9}
+```{r spatial-effort--difference1, fig.asp = spatBoundasp, results = 'asis'}
 base <- with(ICES_VE, 
              aggregate(fishing_hours, 
                        by = list(c_square = c_square, year = year),
@@ -506,7 +662,7 @@ spatialplot(polVMS) +
 
 ## Spatial difference of effort `r tempBound[2]-1` vs `r tempBound[2]`
 
-```{r spatial-effort--difference2, results='asis', fig.height = 9}
+```{r spatial-effort--difference2, fig.env='figure', fig.asp = spatBoundasp, results = 'asis'}
 base <- with(ICES_VE, 
              aggregate(fishing_hours, 
                        by = list(c_square = c_square, year = year),
@@ -564,52 +720,6 @@ spatialplot(polVMS) +
   theme_icesqc(legend.position = "right")
 ```
 
-\newpage
-
-## Mean landing per kW fishing hours by year:
-
-```{r landings-by-gear}
-ps <- gear_splits(with(ICES_VE, totweight/kw_fishinghours), data = ICES_VE, "kg/kWh", gear_groups = 4, func = median)
-ps$table
-for (p in ps$plots) print(p)
-```
-
-\newpage
-
-## Value by gear by year:
-```{r value-by-gear-year, results='asis'}
-ps <- gear_splits(ICES_VE$totvalue, data = ICES_VE, "EUR landed", gear_groups = 4, func = sum)
-ps$table
-for (p in ps$plots) print(p)
-```
-
-\newpage
-
-## Median value per KW fishing hours by year:
-
-```{r mean-value-by-KWhours-year, results='asis'}
-ps <- gear_splits(with(ICES_VE, totvalue/kw_fishinghours), data = ICES_VE, "EUR/kWh", gear_groups = 4, func = median)
-ps$table
-for (p in ps$plots) print(p)
-```
-
-\newpage
-
-##  Average price:
-
-```{r price, results='asis'}
-ps <- gear_splits(with(ICES_VE, totvalue/totweight), data = ICES_VE, "Mean price (EUR/kg)", gear_groups = 4, func = median)
-ps$table
-for (p in ps$plots) print(p)
-```
-
-`r if (!hasvms) {"\\end{comment}"}`
-
-\newpage
-
-
-
-
 
 
 
@@ -628,32 +738,173 @@ for (p in ps$plots) print(p)
 --->
 
 
-# Quality of the logbook
+# Logbooks
 
 `r if (!haslogbook) {"No Logbook data available\n\\begin{comment}"}`
 
 ```{r set-eval-logbook}
-opts_chunk$set(eval = haslogbook)
+knitr::opts_chunk$set(eval = haslogbook)
 ```
 
 
-## Years & number of records for which data has been submitted:
+## Records by year
 ```{r logbook-records, results='asis'}
-kable(count(ICES_LE,'year'), booktabs = TRUE)
+d <- ICES_LE %>% count(year)
+d %>% knitr::kable(booktabs = TRUE)
+d %>% 
+  ggplot(aes(factor(year), n)) + 
+  theme_icesqc() +
+  geom_col() + 
+  labs(x = "Year", y = "Number of records")
+```
 
-dat2plot <- data.frame(table(ICES_LE$year))
-colnames(dat2plot) <- c("Year","Freq")
-ggplot(dat2plot,aes(x=Year,y=Freq)) +
-  geom_bar(stat="identity") + xlab("Year") + ylab("Number of records") +
+\newpage
+
+## Records by month
+```{r logbook-entries-month, results='asis'}
+d <- ICES_LE %>% count(month, year)
+d %>% spread(year, n) %>% knitr::kable(booktabs = TRUE)
+d %>% 
+  ggplot(aes(factor(year), n, fill = factor(month))) + 
+  theme_icesqc(legend.position = "right") +
+  geom_col() + 
+  scale_fill_grey() +
+  labs(x = "Year", y = "Number of records", fill = "Month")
+```
+
+\newpage
+
+## Vessel length categories
+```{r}
+d <- ICES_LE %>% count(variable = vessel_length_category, year)
+d %>% spread(year, n) %>% knitr::kable(booktabs = TRUE)
+d %>% 
+  ggplot(aes(factor(year), n, fill = factor(variable))) + 
+  theme_icesqc(legend.position = "right") +
+  geom_col() + 
+  scale_fill_grey() +
+  labs(x = "Year", y = "Number of records", fill = "Length category")
+```
+
+\newpage
+
+## Gear code
+```{r}
+d <- ICES_LE %>% count(variable = gear_code, year)
+d %>% spread(year, n) %>% knitr::kable(booktabs = TRUE)
+d %>% 
+  ggplot(aes(factor(year), n, fill = factor(variable))) + 
+  theme_icesqc(legend.position = "right") +
+  geom_col() + 
+  scale_fill_grey() +
+  labs(x = "Year", y = "Number of records", fill = "Gear code")
+```
+
+\newpage
+
+## Unique DCF Level 6 codes
+```{r}
+knitr::kable(plyr::count(unique(ICES_LE[,c("LE_MET_level6","year")]),"year"), booktabs = TRUE)
+```
+
+## Top 5 DCF Level 6 codes
+```{r}
+top5Met6 <- ICES_LE %>% count(LE_MET_level6) %>% slice(1:5) %>% pull(LE_MET_level6)
+d <- ICES_LE %>% 
+  filter(LE_MET_level6 %in% top5Met6) %>%
+  count(variable = LE_MET_level6, year)
+d %>% spread(year, n) %>% knitr::kable(booktabs = TRUE)
+d %>% 
+  ggplot(aes(factor(year), n, fill = factor(variable))) + 
+  theme_icesqc(legend.position = "right") +
+  geom_col() + 
+  scale_fill_grey() +
+  labs(x = "Year", y = "Number of records", fill = "Level6")
+```
+
+## Average fishing days
+
+```{r}
+knitr::kable(do.call(rbind, tapply(ICES_LE$fishing_days, ICES_LE$year, summary)), booktabs = TRUE)
+```
+
+```{r}
+ggplot(ICES_LE, aes(x = fishing_days)) +
+  geom_histogram() +
+  xlab("Average fishing days") + ylab("Count") +
+  facet_wrap( ~ year, ncol = 2) +
   theme_icesqc()
 ```
+
+\newpage
+
+## Average kW-hours
+```{r}
+knitr::kable(do.call(rbind, tapply(ICES_LE$kw_fishing_days, ICES_LE$year, summary)), booktabs = TRUE)
+```
+
+```{r}
+ggplot(ICES_LE, aes(x = kw_fishing_days))+
+  geom_histogram() +
+  xlab("Average KW-days") + ylab("Count") +
+  facet_wrap(~ year, ncol = 2) +
+  theme_icesqc()
+```
+
+
+\newpage
+
+## Landings by gear by year
+```{r}
+ps <- gear_splits(ICES_LE$totweight, data = ICES_LE, "kg landed", gear_groups = 4, func = sum)
+ps$table
+for (p in ps$plots) print(p)
+```
+
+## Mean landing per kW fishing days
+```{r}
+ps <- gear_splits(with(ICES_LE, totweight/kw_fishing_days), data = ICES_LE, "kg/kWd", gear_groups = 4, func = median)
+ps$table
+for (p in ps$plots) print(p)
+```
+
+\newpage
+
+## Value by gear by year
+```{r}
+ps <- gear_splits(ICES_LE$totvalue, data = ICES_LE, "EUR landed", gear_groups = 4, func = sum)
+ps$table
+if(any(!is.na(ICES_LE$totvalue))) for (p in ps$plots) print(p)
+```
+
+\newpage
+
+## Median value per KW fishing days by year
+
+```{r}
+ps <- gear_splits(with(ICES_LE, totvalue/kw_fishing_days), data = ICES_LE, "EUR/kWh", gear_groups = 4, func = median)
+ps$table
+if(any(!is.na(ICES_LE$totvalue))) for (p in ps$plots) print(p)
+```
+
+\newpage
+
+##  Average price
+
+```{r}
+ps <- gear_splits(with(ICES_LE, totvalue/totweight), data = ICES_LE, "Mean price (EUR/kg)", gear_groups = 4, func = median)
+ps$table
+if(any(!is.na(ICES_LE$totvalue))) for (p in ps$plots) print(p)
+```
+
+
 
 `r if (any(is.na(ICES_LE$SI_LONG))) {"\\newpage"}`
 
 ## Records assigned to invalid Statistical Rectangles
 ```{r invalid stat-sqrs-le}
 if (any(is.na(ICES_LE$SI_LONG))) {
-  kable(table(`ICES Rectangle` = ICES_LE$ICES_rectangle[is.na(ICES_LE$SI_LONG)],
+  knitr::kable(table(`ICES Rectangle` = ICES_LE$ICES_rectangle[is.na(ICES_LE$SI_LONG)],
               Year = ICES_LE$year[is.na(ICES_LE$SI_LONG)]), booktabs = TRUE)
 } else {
   x <- "There were no invalid Statistical Rectangles reported"
@@ -663,16 +914,7 @@ if (any(is.na(ICES_LE$SI_LONG))) {
 }
 ```
 
-\newpage
 
-## Distribution of logbook entries by month:
-```{r logbook-entries-month, results='asis'}
-kable(table(ICES_LE$month, ICES_LE$year), booktabs = TRUE)
-
-qplot(factor(year),data=ICES_LE, geom="bar",fill=factor(month)) +
-  xlab("Years") + ylab ("Count") + scale_fill_grey(guide=guide_legend(title="Month")) +
-  theme_icesqc(legend.position = "right")
-```
 
 \newpage
 
@@ -681,7 +923,7 @@ qplot(factor(year),data=ICES_LE, geom="bar",fill=factor(month)) +
 dat2tab <- as.matrix(aggregate(ICES_LE$SI_LONG, by = list(year = ICES_LE$year), FUN=range, na.rm=TRUE))
 dat2tab <- cbind(dat2tab,as.matrix(aggregate(ICES_LE$SI_LATI,by=list(ICES_LE$year), FUN=range, na.rm=TRUE)[,-1]))
 colnames(dat2tab) <- c("Year","min lon","max lon","min lat","max lat")
-kable(dat2tab, booktabs = TRUE)
+knitr::kable(dat2tab, booktabs = TRUE)
 ```
 
 ## Area for which data has been submitted:
@@ -721,84 +963,16 @@ map_data("world",
   labs(x = NULL, y = NULL)
 ```
 
-\newpage
 
-## Frequency of vessel length categories by year:
-```{r , results='asis'}
-kable(table(ICES_LE$vessel_length_category,ICES_LE$year), booktabs = TRUE)
 
-qplot(factor(year), data = ICES_LE, geom = "bar", fill = factor(vessel_length_category)) +
-  xlab("Years") + ylab ("Count") + 
-  scale_fill_grey(guide = guide_legend(title = "Length category")) +
-  theme_icesqc()
-```
-
-\newpage
-
-## Frequency of gear codes by year:
-```{r , results='asis'}
-kable(table(ICES_LE$gear_code,ICES_LE$year), booktabs = TRUE)
-
-qplot(factor(year), data = ICES_LE, geom = "bar", fill = factor(gear_code)) +
-  xlab("Years") + ylab("Count") + 
-  scale_fill_grey(guide = guide_legend(title = "Gear code")) +
-  theme_icesqc(legend.position = "right")
-```
-
-\newpage
-
-## Number of unique DCF Level 6 codes by year:
-```{r , results='asis'}
-kable(count(unique(ICES_LE[,c("LE_MET_level6","year")]),"year"), booktabs = TRUE)
-```
-
-## Top 5 DCF Level 6 codes by year:
-```{r , results='asis'}
-top5Met6 <- names(rev(sort(table(ICES_LE$LE_MET_level6)))[1:5])
-kable(table(ICES_LE$LE_MET_level6,ICES_LE$year)[top5Met6,], booktabs = TRUE)
-
-qplot(factor(year), data = subset(ICES_LE,LE_MET_level6 %in% top5Met6),
-      geom = "bar", fill = factor(LE_MET_level6)) +
-  xlab("Years") + ylab("Count") + 
-  scale_fill_grey(guide = guide_legend(title = "Level 6")) +
-  theme_icesqc(legend.position = "right")
-```
 
 \newpage
 
 ## Frequency of VMS enabled category
 ```{r , results='asis'}
-kable(table(ICES_LE$vms_enabled,ICES_LE$vessel_length_category), booktabs = TRUE)
+knitr::kable(table(ICES_LE$vms_enabled,ICES_LE$vessel_length_category), booktabs = TRUE)
 ```
 
-## Average fishing days:
-```{r , results='asis'}
-ggplot(ICES_LE, aes(x = fishing_days))+
-  geom_histogram() +
-  xlab("Average fishing days") + ylab("Count") +
-  facet_wrap(~ year, ncol = 2) +
-  theme_icesqc()
-```
-
-\newpage
-
-## Average KW-hours:
-```{r , results='asis'}
-ggplot(ICES_LE, aes(x = kw_fishing_days)) +
-  geom_histogram() +
-  xlab("Average KW-days") + ylab("Count") +
-  facet_wrap(~ year, ncol = 2) +
-  theme_icesqc()
-```
-
-\newpage
-
-## Landings by gear by year:
-```{r , results='asis'}
-ps <- gear_splits(ICES_LE$totweight, data = ICES_LE, "kg landed", gear_groups = 4, func = sum)
-ps$table
-for (p in ps$plots) print(p)
-```
 
 \newpage
 
@@ -830,10 +1004,44 @@ spatialplot(polRect) +
   theme_icesqc(legend.position = "top")
 ```
 
+```{r, fig.height = 10}
+d <- 
+  ICES_LE %>% 
+  as_tibble() %>% 
+  select(year, long = SI_LONG, lat = SI_LATI, value = fishing_days) %>% 
+  group_by(year, long, lat) %>% 
+  summarise(value = sum(value, na.rm = TRUE))
+
+steps               <- ceiling(max(d$value, na.rm = TRUE) / 250)
+breaks <- steps * c(0, 1, 2.5, 5, 10, 25, 50, 100, 250)
+labels <- cut(0:(steps * 250), breaks = breaks) %>% unique() %>% as.character()
+
+# Note: the top range is not shown in the legends
+map_data("world",
+         xlim = spatCore$xrange, 
+         ylim = spatCore$yrange) %>% 
+  ggplot(aes(long, lat)) +
+  theme_void() +
+  geom_polygon(aes(group = group), fill = "grey90") +
+  geom_raster(data = d, aes(long, lat, fill = value)) +
+  scale_fill_gradientn(colours = inferno(256,
+                                         # drop the light yellow colour
+                                         begin = 0.95,
+                                         end = 0),
+                       guide = guide_legend(),
+                       breaks = breaks,
+                       labels = labels) +
+  coord_quickmap(xlim = spatCore$xrange,
+                 ylim = spatCore$yrange) +
+  geom_path(aes(group = group), colour = "grey", lwd = 0.1) +
+  facet_wrap(~ year, ncol = 2) +
+  labs(x = NULL, y = NULL, fill = "Days@Sea") +
+  theme(legend.position = "top")
+```
 \newpage
 
 ## Spatial difference of effort `r tempBound[1]`:`r (tempBound[2]-1)` vs `r tempBound[2]`
-```{r,  fig.height = 9}
+```{r, fig.env='figure', fig.asp = spatBoundasp, results = 'asis'}
 base <- with(ICES_LE, 
              aggregate(fishing_days, 
                        by = list(ICES_rectangle = ICES_rectangle, year = year),
@@ -890,7 +1098,7 @@ spatialplot(polRect) +
 
 ## Spatial difference of effort `r tempBound[2]-1` vs `r tempBound[2]`
 
-```{r,  fig.height = 9}
+```{r, fig.env='figure', fig.asp = spatBoundasp, results = 'asis'}
 base <- with(ICES_LE, 
              aggregate(fishing_days, 
                        by = list(ICES_rectangle = ICES_rectangle, year = year),
@@ -953,46 +1161,10 @@ ggplot(ICES_LE[ICES_LE$year == tempBoundLog[2],],
   theme_icesqc()
 ```
 
-\newpage
-
-## Mean landing per KW fishing day by year:
-
-```{r , results='asis'}
-ps <- gear_splits(with(ICES_LE, totweight/kw_fishing_days), data = ICES_LE, "kg landed", gear_groups = 4, func = median)
-ps$table
-for (p in ps$plots) print(p)
-```
 
 \newpage
 
-## Value by gear by year:
-```{r , results='asis'}
-ps <- gear_splits(with(ICES_LE, totvalue), data = ICES_LE, "EUR landed", gear_groups = 4, func = median)
-ps$table
-for (p in ps$plots) print(p)
-```
-
-\newpage
-
-## Mean value per KW fishing day by year:
-
-```{r , results='asis'}
-ps <- gear_splits(with(ICES_LE, totvalue/kw_fishing_days), data = ICES_LE, "EUR/kWh", gear_groups = 4, func = median)
-ps$table
-for (p in ps$plots) print(p)
-```
-
-\newpage
-
-##  Average price:
-
-```{r , results='asis'}
-ps <- gear_splits(with(ICES_LE, totvalue/totweight), data = ICES_LE, "Mean price (EUR/kg)", gear_groups = 4, func = median)
-cat(ps$table)
-for (p in ps$plots) print(p)
-```
-
-\newpage
+# VMS vs Logbooks
 
 ## Comparison of Metier level 6 reporting between logbook and VMS
 ```{r met6-comparison, results = 'asis'}
@@ -1011,7 +1183,7 @@ tab[tab == 0] <- NA
 for (i in dimnames(tab)[[3]]) {
   x <- tab[,,i]
   x <- x[apply(!is.na(x), 1, any),]
-  cat(kable(cbind(x, year = i), booktabs = TRUE), sep = "\n")
+  cat(knitr::kable(cbind(x, year = i), booktabs = TRUE), sep = "\n")
   cat("\n")
 }
 ```
